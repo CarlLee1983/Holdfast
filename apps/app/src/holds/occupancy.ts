@@ -16,7 +16,7 @@ export const discardableHold = (now: number): SQL =>
   or(and(eq(holds.status, HELD), lte(holds.expiresAt, now)), eq(holds.status, RELEASED))!;
 
 /**
- * 「占住時段的一筆」唯一的定義：有效保留，或訂位（confirmed 不看到期時間，一直占用到取消（#10）為止）。
+ * 「占住時段的一筆」唯一的定義：有效保留，或訂位（confirmed 不看到期時間，一直占用到取消為止；cancelled 不算）。
  * 占用名額與會員「同一時段一筆」的規則都用它。
  */
 export const activeHoldOrBooking = (now: number): SQL => or(activeHold(now), eq(holds.status, CONFIRMED))!;

@@ -4,12 +4,12 @@ import { handleConfirmPost } from "./confirm";
 const URL_ = new URL("https://holdfast.example/me");
 const member = { memberId: "m1" };
 
-const post = (body: BodyInit = new URLSearchParams({ holdId: "9" })) =>
-  new Request(URL_, { method: "POST", body });
+const formOf = (fields: Record<string, string> = { intent: "confirm", holdId: "9" }) =>
+  new URLSearchParams(fields) as unknown as FormData;
 
 const fakeApp = (result: unknown) => ({ confirmHold: vi.fn().mockResolvedValue(result) });
-const run = (app: ReturnType<typeof fakeApp>, m: typeof member | null, request = post()) =>
-  handleConfirmPost({ member: m, request, app: app as never, url: URL_ });
+const run = (app: ReturnType<typeof fakeApp>, m: typeof member | null, form = formOf()) =>
+  handleConfirmPost({ member: m, form, app: app as never, url: URL_ });
 
 describe("handleConfirmPost", () => {
   it("訪客：303 導向登入，不呼叫 App", async () => {
@@ -37,13 +37,5 @@ describe("handleConfirmPost", () => {
     const app = fakeApp({ ok: false, reason: "invalid_input", fields: { holdId: ["保留編號無效"] } });
 
     expect(await run(app, member)).toEqual({ error: "輸入有誤：保留編號無效", status: 422 });
-  });
-
-  it("body 不是表單：422，不呼叫 App", async () => {
-    const app = fakeApp({ ok: true });
-    const request = new Request(URL_, { method: "POST", body: "x", headers: { "content-type": "text/plain" } });
-
-    expect(await run(app, member, request)).toEqual({ error: "輸入有誤", status: 422 });
-    expect(app.confirmHold).not.toHaveBeenCalled();
   });
 });

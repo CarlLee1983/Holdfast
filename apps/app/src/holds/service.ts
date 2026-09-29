@@ -3,8 +3,9 @@ import type { Clock } from "../shared/clock";
 import { fail, ok, type InvalidInput, type Result } from "../shared/result";
 import { parseInput } from "../shared/input";
 import { MAX_ACTIVE_HOLDS_PER_MEMBER } from "./member-rules";
-import { confirmHoldInput, createHoldInput, memberIdInput } from "./input";
+import { cancelBookingInput, confirmHoldInput, createHoldInput, memberIdInput } from "./input";
 import {
+  cancelBookingIfBeforeCutoff,
   confirmHoldIfActive,
   insertHoldIfAvailable,
   releaseExpiredHolds,
@@ -35,7 +36,13 @@ export type CreateHoldResult =
     >
   | InvalidInput;
 
-export type ConfirmHoldResult = Result<BookingRecord, "hold_not_found" | "hold_expired"> | InvalidInput;
+export type ConfirmHoldResult =
+  | Result<BookingRecord, "hold_not_found" | "hold_expired" | "booking_cancelled">
+  | InvalidInput;
+
+export type CancelBookingResult =
+  | Result<BookingRecord & { cancelledAt: number }, "booking_not_found" | "cancellation_cutoff_passed">
+  | InvalidInput;
 
 export type ListMyBookingsResult = Result<MyBooking[], never> | InvalidInput;
 
@@ -125,8 +132,41 @@ export function createHoldService(d1: D1Database, clock: Clock) {
           // 釋放只會發生在到期之後（#9），對會員而言同樣是已到期
           return fail("hold_expired");
         case CANCELLED:
-          // 訂位已被取消，等同這筆保留不存在
-          return fail("hold_not_found");
+          return fail("booking_cancelled");
+        default: {
+          const unhandled: never = own.status;
+          throw new Error(`未處理的保留狀態：${String(unhandled)}`);
+        }
+      }
+    },
+
+    async cancelBooking(memberId: unknown, input: unknown): Promise<CancelBookingResult> {
+      const member = parseInput(memberIdInput, memberId);
+      if (!member.ok) return member;
+      const parsed = parseInput(cancelBookingInput, input);
+      if (!parsed.ok) return parsed;
+
+      const { bookingId } = parsed.data;
+      const changes = await cancelBookingIfBeforeCutoff(db, member.data, bookingId, clock.now());
+      // 寫入之後再讀：成功時就是剛取消的那筆；changes = 0 時診斷原因，只影響回應，不影響正確性
+      const own = await selectOwnHold(db, member.data, bookingId);
+      if (!own) return fail("booking_not_found");
+      if (changes === 1) {
+        console.log(JSON.stringify({ event: "booking_cancelled", bookingId, slotId: own.slotId, seats: own.seats }));
+      }
+      // 新增狀態時這裡會編譯失敗，必須決定該回哪個 reason
+      switch (own.status) {
+        case CANCELLED:
+          // 重複取消回同一筆（冪等），cancelledAt 維持第一次的值
+          if (own.cancelledAt === null) throw new Error("已取消的訂位缺少取消時間");
+          return ok({ id: own.id, slotId: own.slotId, seats: own.seats, cancelledAt: own.cancelledAt });
+        case CONFIRMED:
+          // 仍是訂位卻沒寫進去，就是已過取消截止時間
+          return fail("cancellation_cutoff_passed");
+        case HELD:
+        case RELEASED:
+          // 還不是（或從來不是）訂位
+          return fail("booking_not_found");
         default: {
           const unhandled: never = own.status;
           throw new Error(`未處理的保留狀態：${String(unhandled)}`);

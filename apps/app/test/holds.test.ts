@@ -437,7 +437,15 @@ describe("confirmHold（ADR 0003）", () => {
     });
     expect(await activeHolds("m1")).toEqual([]);
     expect(await bookings("m1")).toEqual([
-      { id, slotId, resourceName: "大廳", startsAt: NOW + HOUR, endsAt: NOW + 2 * HOUR, seats: 3 },
+      {
+        id,
+        slotId,
+        resourceName: "大廳",
+        startsAt: NOW + HOUR,
+        endsAt: NOW + 2 * HOUR,
+        seats: 3,
+        cancellableUntil: NOW + HOUR - 3600 * 1000,
+      },
     ]);
     expect(await remaining()).toBe(7);
   });

@@ -11,8 +11,7 @@ export const HELD = "held";
 export const CONFIRMED = "confirmed";
 /** 過期保留被釋放後的標記（#9）；只是整理，不參與有效與否的判定（ADR 0003）。 */
 export const RELEASED = "released";
-
-/** 已確認的訂位被取消後的狀態；取消即歸還名額。 */
+/** 訂位被取消（#10）：不再占用名額，也不再算訂位。 */
 export const CANCELLED = "cancelled";
 
 /** 所有狀態的聯集；之後新增狀態時加在這裡，依此做窮盡檢查的地方會編譯失敗。 */
@@ -28,12 +27,14 @@ export const holds = sqliteTable(
     // 刻意不設外鍵指向 user：帳號刪除（#13）要移除 Better Auth 的 user，但保留與訂位紀錄必須留下
     memberId: text("member_id").notNull(),
     seats: integer("seats").notNull(),
-    /** `held`、`confirmed`（訂位）、`released`（過期清理的標記）或 `cancelled`（訂位已取消）。 */
+    /** `held`、`confirmed`（訂位）、`released`（過期清理的標記）或 `cancelled`（取消的訂位）。 */
     status: text("status").$type<HoldStatus>().notNull().default(HELD),
     expiresAt: integer("expires_at").notNull(),
     idempotencyKey: text("idempotency_key").notNull(),
     /** 來自 Clock，不用 SQL 預設值，測試才能控制時間。 */
     createdAt: integer("created_at").notNull(),
+    /** 訂位被取消的時間（Clock），未取消為 null。 */
+    cancelledAt: integer("cancelled_at"),
   },
   (t) => [
     // 加總已占用名額的子查詢用（ADR 0004）

@@ -93,6 +93,10 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
     return this.#holds().confirmHold(memberId, input);
   }
 
+  cancelBooking(memberId: string, input: unknown) {
+    return this.#holds().cancelBooking(memberId, input);
+  }
+
   listMyBookings(memberId: string) {
     return this.#holds().listMyBookings(memberId);
   }
