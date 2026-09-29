@@ -401,6 +401,20 @@ describe("deleteSlot", () => {
     expect(await countRows("holds")).toBe(0);
   });
 
+  it("先落地的寫入把有效時間推過保留的到期時間後，帶到期前請求時間的刪除視該保留為可丟棄（ADR 0011）", async () => {
+    const held = await app.createHold("m1", { slotId, seats: 1, idempotencyKey: "k" });
+    if (!held.ok) throw new Error(`建立保留失敗：${held.reason}`);
+    const laterSlot = await insertSlot(resourceId, NOW + 3 * HOUR, NOW + 4 * HOUR, 10);
+    const expiresAt = NOW + 600_000;
+    setNow(expiresAt);
+    expect((await app.createHold("m2", { slotId: laterSlot, seats: 1, idempotencyKey: "push" })).ok).toBe(true);
+
+    setNow(expiresAt - 1);
+
+    expect(await app.deleteSlot(jwt, { slotId })).toEqual({ ok: true, data: { id: slotId } });
+    expect(await countRows("slots")).toBe(1);
+  });
+
   it("有訂位、其他狀態（例如日後的已取消）的紀錄：回傳 slot_in_use，不會被連帶刪除（ADR 0012）", async () => {
     await insertHold(slotId, 2, "released", NOW - HOUR);
     await insertHold(slotId, 2, "cancelled", NOW - HOUR);

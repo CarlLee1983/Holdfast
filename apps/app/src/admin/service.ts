@@ -1,6 +1,5 @@
 import { sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
-import { toD1Statement } from "../shared/d1-statement";
 import type { z } from "zod";
 import { resourceExists, selectResources, type ResourceSummary } from "../catalog/queries";
 import type { Clock } from "../shared/clock";
@@ -8,6 +7,7 @@ import { fail, ok, type InvalidInput, type Result } from "../shared/result";
 import { createAccessVerifier, type AccessConfig, type AccessIdentity } from "./access";
 import { parseInput } from "../shared/input";
 import { discardableHold } from "../holds/occupancy";
+import { batchAtEffectiveNow, effectiveNow } from "../shared/high-water-mark";
 import { CANCELLED, CONFIRMED, HELD, holds, RELEASED } from "../holds/schema";
 import {
   cancelBookingInput,
@@ -123,10 +123,10 @@ export function createAdminService(d1: D1Database, clock: Clock, accessConfig: A
 
   /**
    * 「時段的保留紀錄全都可丟棄」的條件片段（沒有任何有效保留、訂位或其他狀態的紀錄）；
-   * 稽核、刪保留、刪時段三句共用，判定不會分歧。為什麼只丟棄這些：ADR 0012。
+   * 稽核、刪保留、刪時段三句共用，判定不會分歧；到期以高水位的有效時間判定，只能用在 `batchAtEffectiveNow` 裡（ADR 0011）。為什麼只丟棄這些：ADR 0012。
    */
-  const slotHasOnlyDiscardableHolds = (slotId: number, now: number) =>
-    sql`NOT EXISTS (SELECT 1 FROM ${holds} WHERE ${holds.slotId} = ${slotId} AND NOT ${discardableHold(now)})`;
+  const slotHasOnlyDiscardableHolds = (slotId: number) =>
+    sql`NOT EXISTS (SELECT 1 FROM ${holds} WHERE ${holds.slotId} = ${slotId} AND NOT ${discardableHold(effectiveNow)})`;
 
   /**
    * 調整容量的稽核 INSERT，必須放在 UPDATE 之前（同 auditResourceUpdateBeforeWrite）：
@@ -337,19 +337,19 @@ export function createAdminService(d1: D1Database, clock: Clock, accessConfig: A
     deleteSlot(jwt: unknown, input: unknown): Promise<AdminResult<{ id: number }, "slot_not_found" | "slot_in_use">> {
       return authorizedWrite(jwt, deleteSlotInput, input, async (actor, { slotId }) => {
         // 「保留紀錄全都可丟棄」的判定與刪除在同一個 batch（同一交易）內以條件寫入完成（ADR 0004），
-        // 不先讀再刪。三句共用同一個 now 與條件，所以要嘛全部生效、要嘛都不動，成敗看最後一句的 changes。
-        // 順序固定：稽核（讀時段內容）→ 移除可丟棄的保留紀錄（holds.slot_id 外鍵要求，ADR 0012）→ 刪時段
+        // 不先讀再刪。三句共用同一個條件，所以要嘛全部生效、要嘛都不動，成敗看最後一句的 changes。
+        // 順序固定（推進高水位由 batchAtEffectiveNow 放在最前）：稽核（讀時段內容）→ 移除可丟棄的保留紀錄（holds.slot_id 外鍵要求，ADR 0012）→ 刪時段
         const now = clock.now();
-        const guard = slotHasOnlyDiscardableHolds(slotId, now);
-        const [, , deletion] = await d1.batch([
-          toD1Statement(d1, sql`
+        const guard = slotHasOnlyDiscardableHolds(slotId);
+        const [, , deletion] = await batchAtEffectiveNow(d1, now, [
+          sql`
             INSERT INTO admin_audit (${sql.raw(AUDIT_COLUMNS)})
             SELECT ${actor.email}, 'slot.delete', 'slot', id, ${now},
               json_object('resourceId', resource_id, 'startsAt', starts_at, 'endsAt', ends_at, 'capacity', capacity)
             FROM slots WHERE id = ${slotId} AND ${guard}
-          `),
-          toD1Statement(d1, sql`DELETE FROM ${holds} WHERE ${holds.slotId} = ${slotId} AND ${guard}`),
-          toD1Statement(d1, sql`DELETE FROM slots WHERE id = ${slotId} AND ${guard}`),
+          `,
+          sql`DELETE FROM ${holds} WHERE ${holds.slotId} = ${slotId} AND ${guard}`,
+          sql`DELETE FROM slots WHERE id = ${slotId} AND ${guard}`,
         ]);
         if (deletion!.meta.changes === 0) {
           // 失敗之後才分辨原因（只用來選 reason，不影響是否刪除）

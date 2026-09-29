@@ -190,23 +190,28 @@ export async function confirmHoldIfActive(
 /**
  * 取消的單一條件寫入（ADR 0004）：訂位屬於該會員、狀態為 confirmed、且仍在取消截止時刻內
  * （定義見 `withinCancellationCutoff`，用資源目前的設定，不做快照）。
+ * 語句裡的時間（截止判定與寫下的 `cancelled_at`）是高水位的有效時間（ADR 0011），`now` 只用來推進高水位。
  * 成敗看 `meta.changes`；已取消的重送 changes 為 0，由呼叫端診斷。回傳 `changes`（1 = 已取消）。
  */
 export async function cancelBookingIfBeforeCutoff(
-  db: DrizzleD1Database,
+  d1: D1Database,
   memberId: string,
   bookingId: number,
   now: number,
 ): Promise<number> {
-  const result = await db.run(sql`
-    UPDATE holds SET status = ${CANCELLED}, cancelled_at = ${now}, cancelled_by = 'member'
+  const { changes } = await writeAtEffectiveNow(
+    d1,
+    now,
+    sql`
+    UPDATE holds SET status = ${CANCELLED}, cancelled_at = ${effectiveNow}, cancelled_by = 'member'
     WHERE id = ${bookingId} AND member_id = ${memberId} AND status = ${CONFIRMED}
       AND EXISTS (
         SELECT 1 FROM ${slots} JOIN ${resources} ON ${resources.id} = ${slots.resourceId}
-        WHERE ${slots.id} = ${holds.slotId} AND ${withinCancellationCutoff(now)}
+        WHERE ${slots.id} = ${holds.slotId} AND ${withinCancellationCutoff(effectiveNow)}
       )
-  `);
-  return result.meta.changes;
+  `,
+  );
+  return changes;
 }
 
 /** 會員帳號（Better Auth 的 user）仍存在；確認與其診斷共用，兩處對「會員存在」有同一個定義。 */
@@ -264,9 +269,12 @@ export async function selectBookings(db: DrizzleD1Database, memberId: string): P
   return rows.map((row) => ({ ...row, status: row.status as MyBooking["status"] }));
 }
 
-/** 帳號刪除用：會員未來時段（`starts_at > now`）的訂位改為已取消；已開始時段的是歷史紀錄，不動。回傳 batch 用的語句。 */
-export function cancelFutureBookings(db: DrizzleD1Database, memberId: string, now: number) {
-  const futureSlots = db.select({ id: slots.id }).from(slots).where(gt(slots.startsAt, now));
+/**
+ * 帳號刪除用：會員未來時段（`starts_at > 有效時間`）的訂位改為已取消；已開始時段的是歷史紀錄，不動。回傳 batch 用的語句。
+ * 時間是高水位的有效時間，必須放進 `batchAtEffectiveNow` 執行（ADR 0011）。
+ */
+export function cancelFutureBookings(db: DrizzleD1Database, memberId: string) {
+  const futureSlots = db.select({ id: slots.id }).from(slots).where(gt(slots.startsAt, effectiveNow));
   return db
     .update(holds)
     .set({ status: CANCELLED })

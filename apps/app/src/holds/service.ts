@@ -148,7 +148,7 @@ export function createHoldService(d1: D1Database, clock: Clock) {
       if (!parsed.ok) return parsed;
 
       const { bookingId } = parsed.data;
-      const changes = await cancelBookingIfBeforeCutoff(db, member.data, bookingId, clock.now());
+      const changes = await cancelBookingIfBeforeCutoff(d1, member.data, bookingId, clock.now());
       // 寫入之後再讀：成功時就是剛取消的那筆；changes = 0 時診斷原因，只影響回應，不影響正確性
       const own = await selectOwnHold(db, member.data, bookingId);
       if (!own) return fail("booking_not_found");
