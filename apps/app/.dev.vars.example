@@ -1,0 +1,8 @@
+# 複製成 .dev.vars（已 gitignore）後填入；缺任何一個，App Worker 一載入就失敗。
+# 本機用的值：BETTER_AUTH_SECRET 至少 32 字元，例如 `openssl rand -base64 32`。
+# GOOGLE_* 與 LINE_* 要填真的 OAuth client 才能實際登入；只想跑起來可先填任意非空字串。
+BETTER_AUTH_SECRET=
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+LINE_CHANNEL_ID=
+LINE_CHANNEL_SECRET=

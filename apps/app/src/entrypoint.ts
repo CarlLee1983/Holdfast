@@ -1,7 +1,16 @@
-import { WorkerEntrypoint } from "cloudflare:workers";
+import { env, WorkerEntrypoint } from "cloudflare:workers";
+import { createAuth } from "./auth/auth";
+import { parseAuthConfig } from "./auth/config";
+import { readMemberSession } from "./auth/session";
 import { createAdminService } from "./admin/service";
 import { createCatalogService } from "./catalog/service";
 import { systemClock } from "./shared/clock";
+
+// 載入時就驗證會員登入的設定：缺任何一個 secret 整個 App Worker 都起不來（含 catalog 與 admin RPC），
+// 比登入時才發現好。頂層讀 env 只讀 vars 與 secrets，不做 I/O。
+const authConfig = parseAuthConfig(env);
+
+const AUTH_PATH_PREFIX = "/api/auth/";
 
 /**
  * App Worker 對外的介面（ADR 0005）：Web Worker 經 Service Binding 呼叫這些 RPC 方法。
@@ -18,6 +27,23 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
       audience: this.env.ACCESS_AUD,
       jwksJson: this.env.ACCESS_JWKS_JSON,
     });
+  }
+
+  #auth() {
+    return createAuth(authConfig, this.env.DB);
+  }
+
+  /** Web Worker 把 `/api/auth/*` 原封轉來（ADR 0008）；App 沒有其他 HTTP 入口。 */
+  fetch(request: Request): Promise<Response> | Response {
+    if (!new URL(request.url).pathname.startsWith(AUTH_PATH_PREFIX)) {
+      return new Response("Not Found", { status: 404 });
+    }
+    return this.#auth().handler(request);
+  }
+
+  /** 以瀏覽器的 cookie 換會員資訊；不是會員時回 null。 */
+  getMemberSession(cookie: string) {
+    return readMemberSession(this.#auth(), cookie);
   }
 
   listResources() {
