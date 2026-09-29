@@ -1,10 +1,10 @@
+import { describeReason } from "../shared/reasons";
+
 export interface Failure {
   message: string;
   /** 欄位名稱 → 錯誤訊息（訊息由 App 的驗證產生，已是可顯示的文字）。 */
   fields: Record<string, string[]>;
 }
-
-const GENERIC_MESSAGE = "操作失敗，請稍後再試";
 
 const MESSAGES: Record<string, string> = {
   resource_not_found: "找不到這個資源",
@@ -18,10 +18,5 @@ export function describeFailure(result: {
   reason: string;
   fields?: Record<string, string[]>;
 }): Failure {
-  const known = MESSAGES[result.reason];
-  if (known === undefined) {
-    // 內部代碼不給使用者看，只留在 log
-    console.error(`未預期的管理操作失敗原因：${result.reason}`);
-  }
-  return { message: known ?? GENERIC_MESSAGE, fields: result.fields ?? {} };
+  return { message: describeReason(MESSAGES, result.reason, "管理操作"), fields: result.fields ?? {} };
 }

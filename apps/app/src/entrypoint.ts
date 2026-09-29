@@ -5,6 +5,7 @@ import { AUTH_PATH_PREFIX } from "./auth/paths";
 import { readMemberSession } from "./auth/session";
 import { createAdminService } from "./admin/service";
 import { createCatalogService } from "./catalog/service";
+import { createHoldService } from "./holds/service";
 import { systemClock } from "./shared/clock";
 
 /**
@@ -16,6 +17,10 @@ import { systemClock } from "./shared/clock";
 export class AppEntrypoint extends WorkerEntrypoint<Env> {
   #catalog() {
     return createCatalogService(this.env.DB, systemClock);
+  }
+
+  #holds() {
+    return createHoldService(this.env.DB, systemClock);
   }
 
   #admin() {
@@ -67,6 +72,16 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
 
   listSlots(resourceId: number) {
     return this.#catalog().listSlots(resourceId);
+  }
+
+  // 會員 RPC：`memberId` 由 Web 從 session 解析出來後帶入，App 信任它（不再驗 session），只擋空值。
+  // 輸入以 unknown 接收，在邊界用 zod 驗證。
+  createHold(memberId: string, input: unknown) {
+    return this.#holds().createHold(memberId, input);
+  }
+
+  listMyHolds(memberId: string) {
+    return this.#holds().listMyHolds(memberId);
   }
 
   // 管理 RPC（ADR 0007）：第一個參數是 Cloudflare Access 的原始 JWT，由 App 自行驗簽，

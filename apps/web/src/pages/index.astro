@@ -3,8 +3,20 @@ import { env } from "cloudflare:workers";
 import { loadCatalog } from "../catalog/load-catalog";
 import { hasStarted } from "../catalog/slot-status";
 import { formatTaipeiDate, formatTaipeiTime } from "../catalog/taipei-time";
+import { loginUrl } from "../auth/member";
+import { handleHoldPost } from "../holds/submit";
 
 export const prerender = false;
+
+const member = Astro.locals.member;
+let holdError = "";
+
+if (Astro.request.method === "POST") {
+  const outcome = await handleHoldPost({ member, request: Astro.request, app: env.APP, url: Astro.url });
+  if ("redirect" in outcome) return Astro.redirect(outcome.redirect, outcome.status);
+  holdError = outcome.error;
+  Astro.response.status = outcome.status;
+}
 
 const catalog = await loadCatalog(env.APP);
 const now = Date.now();
@@ -20,9 +32,9 @@ const now = Date.now();
   <body>
     <h1>Holdfast 訂位</h1>
     {
-      Astro.locals.member ? (
+      member ? (
         <p>
-          {Astro.locals.member.name}，已登入。
+          {member.name}，已登入。<a href="/me">我的保留</a>
           <button type="button" id="sign-out">登出</button>
           <span id="sign-out-error" role="alert" hidden></span>
         </p>
@@ -30,12 +42,14 @@ const now = Date.now();
         <p><a href="/login">登入</a></p>
       )
     }
+    {holdError && <p role="alert">{holdError}</p>}
     <p>時間皆為台北時間。</p>
     {catalog.length === 0 && <p>目前沒有資源。</p>}
     {
       catalog.map(({ resource, slots }) => (
         <section>
           <h2>{resource.name}</h2>
+          <p>單筆名額上限：{resource.seatsPerHold}</p>
           {slots.length === 0 ? (
             <p>目前沒有尚未結束的時段。</p>
           ) : (
@@ -46,6 +60,7 @@ const now = Date.now();
                   <th>時間</th>
                   <th>剩餘名額</th>
                   <th>狀態</th>
+                  <th>保留</th>
                 </tr>
               </thead>
               <tbody>
@@ -59,6 +74,21 @@ const now = Date.now();
                       {slot.remainingSeats} / {slot.capacity}
                     </td>
                     <td>{hasStarted(slot.startsAt, now) ? "已開始／不可預訂" : "尚未開始"}</td>
+                    <td>
+                      {hasStarted(slot.startsAt, now) ? null : member ? (
+                        <form method="post">
+                          <input type="hidden" name="slotId" value={slot.id} />
+                          <input type="hidden" name="idempotencyKey" value={crypto.randomUUID()} />
+                          <label>
+                            名額
+                            <input type="number" name="seats" min="1" max={resource.seatsPerHold} value="1" required />
+                          </label>
+                          <button type="submit">保留</button>
+                        </form>
+                      ) : (
+                        <a href={loginUrl(Astro.url)}>登入後保留</a>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

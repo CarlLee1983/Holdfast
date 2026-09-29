@@ -4,12 +4,8 @@ import { resourceExists, selectResources, type ResourceSummary } from "../catalo
 import type { Clock } from "../shared/clock";
 import { fail, ok, type InvalidInput, type Result } from "../shared/result";
 import { createAccessVerifier, type AccessConfig, type AccessIdentity } from "./access";
-import {
-  createResourceInput,
-  createSlotInput,
-  parseInput,
-  updateResourceInput,
-} from "./input";
+import { parseInput } from "../shared/input";
+import { createResourceInput, createSlotInput, updateResourceInput } from "./input";
 
 export interface SlotRecord {
   id: number;
