@@ -32,6 +32,7 @@ App Worker（Hono + Application + Domain）
 ```
 apps/app   App Worker：Hono + WorkerEntrypoint RPC、領域邏輯、D1 + Drizzle（依功能分資料夾，例如 catalog）
 apps/web   Web Worker：Astro + @astrojs/cloudflare，只經 Service Binding RPC 取資料，沒有 D1 binding
+e2e        Playwright：以建置產物跑兩個 Worker，瀏覽器走過會員主流程
 ```
 
 ```sh
@@ -43,6 +44,7 @@ bun run db:seed        # 寫入 2 個資源與數個時段（可重複執行，�
 bun run admin:dev-token # 產生本機 /admin 用的測試金鑰與 JWT（見「管理後台」）
 bun run dev            # astro dev，App Worker 以 auxiliaryWorkers 一併啟動；預設 http://localhost:4321（被占用會換埠）
 bun run preview        # astro build 後以 wrangler dev 同時跑兩個 Worker（-c web -c app），較接近部署形態
+bun run e2e            # Playwright 主流程（首次先在 e2e/ 執行 bunx playwright install chromium）
 ```
 
 - 會員登入需要 secrets，缺少時會員登入不可用（見「會員登入」）；本機先 `cp apps/app/.dev.vars.example apps/app/.dev.vars` 並填值（見「會員登入」）。
@@ -50,6 +52,7 @@ bun run preview        # astro build 後以 wrangler dev 同時跑兩個 Worker�
 - 改 schema：編輯 `apps/app/src/**/schema.ts`，在 `apps/app` 執行 `bun run db:generate` 產生 migration。
 - 時間一律以 UTC epoch 毫秒儲存與傳遞，只有 Web Worker 顯示時換成 Asia/Taipei。
 - 測試怎麼替換「現在」：main Worker 與測試跑在同一個 isolate，`test/clock.ts` 的 `setNow()` 偽造全域 `Date`，經 RPC 呼叫的 `systemClock` 就會讀到；因此應用程式碼只能透過 `Clock` 取得時間，直接呼叫 `Date.now()` 或 `new Date()` 會繞過測試的時間控制。
+- E2E 驗證 Astro、RPC 與 App Worker 的接線，不重複業務規則；它用自己的狀態（`.wrangler/e2e`，每次重建）與固定的測試 secret，不碰 `.wrangler/state` 與 `.dev.vars`，埠固定 8790。社群登入以直接寫入 session 取代（ADR 0013），production 不含任何測試登入。
 - 兩個 Worker 都開啟 `observability`（Workers Logs）。部署順序固定 App 先、Web 後（ADR 0005）。
 
 ## 管理後台
