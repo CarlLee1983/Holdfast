@@ -4,8 +4,8 @@
 
 ## 現在的階段
 
-Holdfast 還在決策階段：只有文件，沒有程式碼。架構與技術選型由 `/grill-with-docs` 產出 `CONTEXT.md` 與 `docs/adr/`，
-定案之後才加入程式碼與部署設定。
+MVP 的決策已記錄在 `CONTEXT.md` 與 `docs/adr/`，程式碼已開始（`apps/app`、`apps/web`；指令見 README「開發」）。
+新的邊界層決策照舊先走 `/grill-with-docs` 與 ADR。
 
 開始工作時，如果 `docs/adr/` 已存在，先讀它並回報目前還是 `proposed` 的決策。
 

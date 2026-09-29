@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "holdfast-web",
+  "main": "@astrojs/cloudflare/entrypoints/server",
+  "compatibility_date": "2026-08-01",
+  "observability": { "enabled": true },
+  "assets": { "directory": "./dist", "binding": "ASSETS" },
+  // 只經 Service Binding RPC 呼叫 App Worker（ADR 0005）；這個 Worker 沒有 D1 binding
+  "services": [
+    { "binding": "APP", "service": "holdfast-app", "entrypoint": "AppEntrypoint" }
+  ]
+}

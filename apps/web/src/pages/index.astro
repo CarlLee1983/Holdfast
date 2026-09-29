@@ -1,0 +1,60 @@
+---
+import { env } from "cloudflare:workers";
+import { loadCatalog } from "../catalog/load-catalog";
+import { hasStarted } from "../catalog/slot-status";
+import { formatTaipeiDate, formatTaipeiTime } from "../catalog/taipei-time";
+
+export const prerender = false;
+
+const catalog = await loadCatalog(env.APP);
+const now = Date.now();
+---
+
+<!doctype html>
+<html lang="zh-Hant-TW">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Holdfast 訂位</title>
+  </head>
+  <body>
+    <h1>Holdfast 訂位</h1>
+    <p>時間皆為台北時間。</p>
+    {catalog.length === 0 && <p>目前沒有資源。</p>}
+    {
+      catalog.map(({ resource, slots }) => (
+        <section>
+          <h2>{resource.name}</h2>
+          {slots.length === 0 ? (
+            <p>目前沒有尚未結束的時段。</p>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>日期</th>
+                  <th>時間</th>
+                  <th>剩餘名額</th>
+                  <th>狀態</th>
+                </tr>
+              </thead>
+              <tbody>
+                {slots.map((slot) => (
+                  <tr>
+                    <td>{formatTaipeiDate(slot.startsAt)}</td>
+                    <td>
+                      {formatTaipeiTime(slot.startsAt)}–{formatTaipeiTime(slot.endsAt)}
+                    </td>
+                    <td>
+                      {slot.remainingSeats} / {slot.capacity}
+                    </td>
+                    <td>{hasStarted(slot.startsAt, now) ? "已開始／不可預訂" : "尚未開始"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+      ))
+    }
+  </body>
+</html>

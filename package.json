@@ -1,0 +1,15 @@
+{
+  "name": "holdfast",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "typecheck": "bun run --filter '*' typecheck",
+    "test": "bun run --filter '*' test",
+    "dev": "bun run --filter @holdfast/web dev",
+    "db:migrate": "bun run --filter @holdfast/app db:migrate:local",
+    "db:seed": "bun run --filter @holdfast/app db:seed:local",
+    "preview": "bun run --filter @holdfast/web preview"
+  }
+}
