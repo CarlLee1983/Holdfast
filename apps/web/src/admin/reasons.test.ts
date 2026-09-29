@@ -5,6 +5,8 @@ describe("管理 RPC 失敗原因轉成給管理者看的訊息", () => {
   it.each([
     ["resource_not_found", "找不到這個資源"],
     ["slot_overlaps", "與這個資源既有的時段重疊"],
+    ["slot_not_found", "找不到這個時段"],
+    ["slot_in_use", "這個時段仍有有效的保留或訂位，無法刪除"],
   ])("%s 有具名的友善訊息", (reason, text) => {
     expect(describeFailure({ ok: false, reason })).toEqual({ message: text, fields: {} });
   });

@@ -2,7 +2,7 @@ import { exports } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import { ADMIN_EMAIL, mintAccessJwt } from "./access";
 import { setNow } from "./clock";
-import { auditRows, countRows, insertResource, insertSlot, resetDb } from "./db";
+import { auditRows, countRows, insertHold, insertResource, insertSlot, resetDb } from "./db";
 
 const HOUR = 3_600_000;
 const NOW = Date.UTC(2030, 0, 1);
@@ -282,5 +282,201 @@ describe("createSlot", () => {
     expect(results.filter((r) => !r.ok && r.reason === "slot_overlaps")).toHaveLength(4);
     expect(await countRows("slots")).toBe(1);
     expect(await countRows("admin_audit")).toBe(1);
+  });
+});
+
+describe("updateSlotCapacity", () => {
+  let resourceId: number;
+  let slotId: number;
+  beforeEach(async () => {
+    resourceId = await insertResource({ name: "大廳" });
+    slotId = await insertSlot(resourceId, NOW + HOUR, NOW + 2 * HOUR, 10);
+  });
+
+  it("調高容量，回傳更新後的時段，並寫入含前後容量的稽核紀錄", async () => {
+    const result = await app.updateSlotCapacity(jwt, { slotId, capacity: 20 });
+
+    expect(result).toEqual({
+      ok: true,
+      data: { id: slotId, resourceId, startsAt: NOW + HOUR, endsAt: NOW + 2 * HOUR, capacity: 20 },
+    });
+    const rows = await auditRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      actor_email: ADMIN_EMAIL,
+      action: "slot.update_capacity",
+      target_type: "slot",
+      target_id: slotId,
+      at: NOW,
+    });
+    expect(JSON.parse(rows[0]!.detail)).toEqual({ before: { capacity: 10 }, after: { capacity: 20 } });
+  });
+
+  it("調低到低於已占用：允許，既有保留與訂位不受影響，新保留以 slot_overcommitted 被拒絕", async () => {
+    await insertHold(slotId, 4, "held", NOW + 600_000);
+    await insertHold(slotId, 4, "confirmed", NOW - 1);
+
+    const result = await app.updateSlotCapacity(jwt, { slotId, capacity: 3 });
+
+    expect(result.ok).toBe(true);
+    expect(await countRows("holds")).toBe(2);
+    expect(await app.createHold("m-new", { slotId, seats: 1, idempotencyKey: "k" })).toEqual({
+      ok: false,
+      reason: "slot_overcommitted",
+    });
+  });
+
+  it("未知的時段回傳 slot_not_found，且不寫稽核", async () => {
+    expect(await app.updateSlotCapacity(jwt, { slotId: 999_999, capacity: 5 })).toEqual({
+      ok: false,
+      reason: "slot_not_found",
+    });
+    expect(await countRows("admin_audit")).toBe(0);
+  });
+
+  it.each([
+    ["容量為 0", { capacity: 0 }],
+    ["容量為負", { capacity: -1 }],
+    ["容量非整數", { capacity: 2.5 }],
+    ["容量超過 100000", { capacity: 100_001 }],
+    ["容量是字串", { capacity: "5" }],
+    ["容量是 NaN", { capacity: NaN }],
+  ])("輸入無效（%s）回傳 invalid_input，容量不變且不寫稽核", async (_label, input) => {
+    const result = await app.updateSlotCapacity(jwt, { slotId, ...input });
+
+    expect(result).toMatchObject({ ok: false, reason: "invalid_input" });
+    expect(!result.ok && result.reason === "invalid_input" && result.fields.capacity?.length).toBeGreaterThan(0);
+    expect(await countRows("admin_audit")).toBe(0);
+    const listed = await app.listSlotsForAdmin(jwt, resourceId);
+    expect(listed.ok && listed.data[0]!.capacity).toBe(10);
+  });
+
+  it("時段編號無效回傳 invalid_input", async () => {
+    const result = await app.updateSlotCapacity(jwt, { slotId: 0, capacity: 5 });
+    expect(!result.ok && result.reason === "invalid_input" && result.fields.slotId?.length).toBeGreaterThan(0);
+  });
+});
+
+describe("deleteSlot", () => {
+  let resourceId: number;
+  let slotId: number;
+  beforeEach(async () => {
+    resourceId = await insertResource({ name: "大廳" });
+    slotId = await insertSlot(resourceId, NOW + HOUR, NOW + 2 * HOUR, 10);
+  });
+
+  it("刪除沒有任何保留的時段，並寫入稽核紀錄（含刪除前的內容）", async () => {
+    expect(await app.deleteSlot(jwt, { slotId })).toEqual({ ok: true, data: { id: slotId } });
+
+    expect(await countRows("slots")).toBe(0);
+    const rows = await auditRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ action: "slot.delete", target_type: "slot", target_id: slotId, at: NOW });
+    expect(JSON.parse(rows[0]!.detail)).toEqual({
+      resourceId,
+      startsAt: NOW + HOUR,
+      endsAt: NOW + 2 * HOUR,
+      capacity: 10,
+    });
+  });
+
+  it.each([
+    ["有效保留", "held", NOW + 1000],
+    ["訂位", "confirmed", NOW - 1],
+  ] as const)("仍有%s：回傳 slot_in_use，時段、保留與稽核都不變", async (_label, status, expiresAt) => {
+    await insertHold(slotId, 2, status, expiresAt);
+
+    expect(await app.deleteSlot(jwt, { slotId })).toEqual({ ok: false, reason: "slot_in_use" });
+    expect(await countRows("slots")).toBe(1);
+    expect(await countRows("holds")).toBe(1);
+    expect(await countRows("admin_audit")).toBe(0);
+  });
+
+  it("只剩已過期或已釋放的保留：可刪除，這些無效紀錄一併移除", async () => {
+    await insertHold(slotId, 2, "held", NOW);
+    await insertHold(slotId, 2, "released", NOW - HOUR);
+
+    expect((await app.deleteSlot(jwt, { slotId })).ok).toBe(true);
+    expect(await countRows("slots")).toBe(0);
+    expect(await countRows("holds")).toBe(0);
+  });
+
+  it("不影響其他時段的保留", async () => {
+    const other = await insertSlot(resourceId, NOW + 3 * HOUR, NOW + 4 * HOUR, 10);
+    await insertHold(other, 1, "released", NOW - HOUR);
+
+    expect((await app.deleteSlot(jwt, { slotId })).ok).toBe(true);
+    expect(await countRows("holds")).toBe(1);
+  });
+
+  it("未知的時段回傳 slot_not_found，且不寫稽核", async () => {
+    expect(await app.deleteSlot(jwt, { slotId: 999_999 })).toEqual({ ok: false, reason: "slot_not_found" });
+    expect(await countRows("admin_audit")).toBe(0);
+  });
+
+  it("時段編號無效回傳 invalid_input", async () => {
+    expect(await app.deleteSlot(jwt, { slotId: "1" })).toMatchObject({ ok: false, reason: "invalid_input" });
+    expect(await countRows("slots")).toBe(1);
+  });
+
+  it("刪除與建立保留併發：保留成功則刪除被拒絕，反之亦然，不會留下指向已刪時段的保留", async () => {
+    const [del, hold] = await Promise.all([
+      app.deleteSlot(jwt, { slotId }),
+      app.createHold("m1", { slotId, seats: 1, idempotencyKey: "k" }),
+    ]);
+
+    expect(del.ok).toBe(!hold.ok);
+    expect(await countRows("slots")).toBe(del.ok ? 0 : 1);
+    expect(await countRows("holds")).toBe(hold.ok ? 1 : 0);
+  });
+});
+
+describe("listSlotsForAdmin", () => {
+  let resourceId: number;
+  beforeEach(async () => {
+    resourceId = await insertResource({ name: "大廳" });
+  });
+
+  it("每個時段顯示容量、已占用、剩餘與超占狀態，依開始時間排序", async () => {
+    const later = await insertSlot(resourceId, NOW + 3 * HOUR, NOW + 4 * HOUR, 10);
+    const early = await insertSlot(resourceId, NOW + HOUR, NOW + 2 * HOUR, 10);
+    await insertHold(early, 3, "held", NOW + 1000);
+    await insertHold(early, 2, "confirmed", NOW - 1);
+    await insertHold(early, 9, "held", NOW); // 剛好到期：不占用
+    await insertHold(early, 9, "released", NOW - HOUR);
+
+    const result = await app.listSlotsForAdmin(jwt, resourceId);
+
+    expect(result).toEqual({
+      ok: true,
+      data: [
+        { id: early, startsAt: NOW + HOUR, endsAt: NOW + 2 * HOUR, capacity: 10, occupied: 5, remainingSeats: 5, overcommitted: false },
+        { id: later, startsAt: NOW + 3 * HOUR, endsAt: NOW + 4 * HOUR, capacity: 10, occupied: 0, remainingSeats: 10, overcommitted: false },
+      ],
+    });
+  });
+
+  it("占用剛好等於容量不算超占；超過才算，剩餘以 0 顯示", async () => {
+    const full = await insertSlot(resourceId, NOW + HOUR, NOW + 2 * HOUR, 4);
+    const over = await insertSlot(resourceId, NOW + 3 * HOUR, NOW + 4 * HOUR, 4);
+    await insertHold(full, 4, "confirmed", 0);
+    await insertHold(over, 5, "confirmed", 0);
+
+    const result = await app.listSlotsForAdmin(jwt, resourceId);
+    const byId = new Map(result.ok ? result.data.map((s) => [s.id, s]) : []);
+
+    expect(byId.get(full)).toMatchObject({ occupied: 4, remainingSeats: 0, overcommitted: false });
+    expect(byId.get(over)).toMatchObject({ occupied: 5, remainingSeats: 0, overcommitted: true });
+  });
+
+  it("包含已結束的時段（管理者需要能清理）", async () => {
+    const past = await insertSlot(resourceId, NOW - 2 * HOUR, NOW - HOUR, 5);
+
+    const result = await app.listSlotsForAdmin(jwt, resourceId);
+    expect(result.ok && result.data.map((s) => s.id)).toEqual([past]);
+  });
+
+  it("未知的資源回傳 resource_not_found", async () => {
+    expect(await app.listSlotsForAdmin(jwt, 999_999)).toEqual({ ok: false, reason: "resource_not_found" });
   });
 });

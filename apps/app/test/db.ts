@@ -81,7 +81,23 @@ export async function auditRows(): Promise<AuditRow[]> {
   return results;
 }
 
-/** 直接改容量（管理 RPC 不提供修改時段），用來造出「既有占用超過容量」的情況。 */
+/** 直接改容量（不經管理 RPC），用來造出「既有占用超過容量」的情況。 */
 export async function setSlotCapacity(slotId: number, capacity: number): Promise<void> {
   await env.DB.prepare("UPDATE slots SET capacity = ? WHERE id = ?").bind(capacity, slotId).run();
+}
+
+/** 直接寫入一筆保留或訂位（狀態、到期時間由測試決定），用來造出各種占用情況。 */
+export async function insertHold(
+  slotId: number,
+  seats: number,
+  status: "held" | "confirmed" | "released",
+  expiresAt: number,
+  memberId = `m${Math.random()}`,
+): Promise<number> {
+  const result = await env.DB.prepare(
+    "INSERT INTO holds (slot_id, member_id, seats, status, expires_at, idempotency_key, created_at) VALUES (?, ?, ?, ?, ?, ?, 0) RETURNING id",
+  )
+    .bind(slotId, memberId, seats, status, expiresAt, `k${Math.random()}`)
+    .first<{ id: number }>();
+  return result!.id;
 }
