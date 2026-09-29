@@ -137,7 +137,7 @@ describe("已過期但尚未釋放的保留", () => {
 });
 
 describe("冪等鍵", () => {
-  it("重送同一請求：回傳同一筆保留，只有一列，名額只扣一次", async () => {
+  it("重送同一請求：回傳同一筆保留，只有一列，名額只扣一次（優先於 already_in_slot）", async () => {
     const first = await app.createHold("m1", hold(2, "k"));
     const replay = await app.createHold("m1", hold(2, "k"));
 
@@ -162,7 +162,7 @@ describe("冪等鍵", () => {
     expect(await app.createHold("m1", hold(2, "k"))).toEqual(first);
   });
 
-  it("同一個鍵搭配不同名額或時段：idempotency_key_conflict", async () => {
+  it("同一個鍵搭配不同名額或時段：idempotency_key_conflict（優先於 already_in_slot）", async () => {
     await app.createHold("m1", hold(2, "k"));
     const otherSlot = await insertSlot(resourceId, NOW + 3 * HOUR, NOW + 4 * HOUR, 10);
 
@@ -225,9 +225,10 @@ describe("createHold 輸入驗證", () => {
 
 describe("listMyHolds", () => {
   it("只列出自己的有效保留，依到期時間、id 排序，帶資源名稱與時段時間", async () => {
+    const otherSlotSameTime = await insertSlot(resourceId, NOW + HOUR, NOW + 2 * HOUR, 10); // 規則以時段 id 判斷；時間相同的另一個時段可以保留
     const a = await app.createHold("m1", hold(1, "a"));
     setNow(NOW + 1000);
-    const b = await app.createHold("m1", hold(2, "b"));
+    const b = await app.createHold("m1", hold(2, "b", otherSlotSameTime));
     await app.createHold("m2", hold(1, "c"));
 
     expect(await app.listMyHolds("m1")).toEqual({
@@ -244,7 +245,7 @@ describe("listMyHolds", () => {
         },
         {
           id: b.ok ? b.data.id : 0,
-          slotId,
+          slotId: otherSlotSameTime,
           resourceName: "大廳",
           startsAt: NOW + HOUR,
           endsAt: NOW + 2 * HOUR,
@@ -300,5 +301,90 @@ describe("併發不超賣（ADR 0004）", () => {
     expect(results.every((r) => r.ok)).toBe(true);
     expect(new Set(results.map((r) => r.ok && r.data.id)).size).toBe(1);
     expect(await countRows("holds")).toBe(1);
+  });
+});
+
+describe("會員層級的保留規則（#7）", () => {
+  const slotAt = (hours: number) => insertSlot(resourceId, NOW + hours * HOUR, NOW + (hours + 1) * HOUR, 10);
+
+  it("同一會員同一時段再保留（不同鍵）：already_in_slot；別的會員仍可保留", async () => {
+    await app.createHold("m1", hold(1, "a"));
+
+    expect(await app.createHold("m1", hold(1, "b"))).toEqual({ ok: false, reason: "already_in_slot" });
+    expect((await app.createHold("m2", hold(1, "c"))).ok).toBe(true);
+    expect(await countRows("holds")).toBe(2);
+  });
+
+  it("已有 3 筆有效保留：第 4 筆 active_hold_limit_reached；一筆過期後可再保留", async () => {
+    const slots = [slotId, await slotAt(3), await slotAt(4), await slotAt(5)];
+    await app.createHold("m1", hold(1, "a", slots[0]));
+    setNow(NOW + 1000);
+    await app.createHold("m1", hold(1, "b", slots[1]));
+    await app.createHold("m1", hold(1, "c", slots[2]));
+
+    expect(await app.createHold("m1", hold(1, "d", slots[3]))).toEqual({
+      ok: false,
+      reason: "active_hold_limit_reached",
+    });
+
+    setNow(NOW + TTL_SECONDS * 1000); // 第一筆到期（未釋放），另兩筆仍有效
+    expect((await app.createHold("m1", hold(1, "d", slots[3]))).ok).toBe(true);
+    expect(await activeHolds("m1")).toHaveLength(3);
+  });
+
+  it("保留過期（未釋放）後，同一會員可立即對同一時段重新保留，剩餘名額只反映新的", async () => {
+    await app.createHold("m1", hold(3, "a"));
+    setNow(NOW + TTL_SECONDS * 1000);
+
+    expect((await app.createHold("m1", hold(2, "b"))).ok).toBe(true);
+    expect(await remaining()).toBe(8);
+    expect(await countRows("holds")).toBe(2);
+  });
+
+  it("診斷順序：slot_started 優先於 already_in_slot", async () => {
+    const started = await insertSlot(resourceId, NOW + HOUR, NOW + 2 * HOUR, 10);
+    await app.createHold("m1", hold(1, "a", started));
+    setNow(NOW + HOUR);
+
+    expect(await app.createHold("m1", hold(1, "b", started))).toEqual({ ok: false, reason: "slot_started" });
+  });
+
+  it("診斷順序：already_in_slot 優先於 insufficient_seats", async () => {
+    await app.createHold("m1", hold(1, "a"));
+    await app.createHold("m2", hold(4, "b"));
+    await app.createHold("m3", hold(4, "c"));
+
+    expect(await app.createHold("m1", hold(4, "d"))).toEqual({ ok: false, reason: "already_in_slot" });
+  });
+
+  it("診斷順序：active_hold_limit_reached 優先於 seats_per_hold_exceeded", async () => {
+    await app.createHold("m1", hold(1, "a"));
+    await app.createHold("m1", hold(1, "b", await slotAt(3)));
+    await app.createHold("m1", hold(1, "c", await slotAt(4)));
+
+    expect(await app.createHold("m1", hold(5, "d", await slotAt(5)))).toEqual({
+      ok: false,
+      reason: "active_hold_limit_reached",
+    });
+  });
+
+  it.todo("#8：同一時段已有有效訂位時回 already_in_slot；訂位不計入有效保留額度");
+
+  it("併發：同一會員對同一時段送 5 筆（不同鍵），恰好 1 筆成功", async () => {
+    const results = await Promise.all(Array.from({ length: 5 }, (_, i) => app.createHold("m1", hold(1, `k-${i}`))));
+
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect(results.filter((r) => !r.ok && r.reason === "already_in_slot")).toHaveLength(4);
+    expect(await countRows("holds")).toBe(1);
+  });
+
+  it("併發：同一會員對 6 個不同時段各送 1 筆，恰好 3 筆成功", async () => {
+    const slots = await Promise.all(Array.from({ length: 6 }, (_, i) => slotAt(10 + i)));
+
+    const results = await Promise.all(slots.map((slot, i) => app.createHold("m1", hold(1, `k-${i}`, slot))));
+
+    expect(results.filter((r) => r.ok)).toHaveLength(3);
+    expect(results.filter((r) => !r.ok && r.reason === "active_hold_limit_reached")).toHaveLength(3);
+    expect(await activeHolds("m1")).toHaveLength(3);
   });
 });

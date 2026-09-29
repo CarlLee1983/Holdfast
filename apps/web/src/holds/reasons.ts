@@ -4,6 +4,8 @@ const MESSAGES: Record<string, string> = {
   insufficient_seats: "剩餘名額不足，請改選其他時段或減少名額",
   seats_per_hold_exceeded: "超過這個資源的單筆名額上限",
   slot_started: "時段已開始，無法保留",
+  already_in_slot: "你在這個時段已有有效的保留或訂位",
+  active_hold_limit_reached: "你持有的有效保留已達上限，請先確認或等待到期後再保留",
   slot_overcommitted: "這個時段目前無法接受新的保留",
   slot_not_found: "找不到這個時段",
   idempotency_key_conflict: "這個保留請求已送出過，請重新整理頁面後再試",
