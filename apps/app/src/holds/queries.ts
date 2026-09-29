@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, inArray, lte, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, or, sql, type SQL } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { resources, slots } from "../catalog/schema";
 import {
@@ -7,18 +7,21 @@ import {
   memberActiveInSlot,
 } from "./member-rules";
 import { cancellableUntil, withinCancellationCutoff } from "./cancellation";
-import { activeHold, occupiedSeats } from "./occupancy";
+import { activeHold, expiredHold, occupiedSeats } from "./occupancy";
 import { effectiveNow, writeAtEffectiveNow, type BumpedWriteResult } from "../shared/high-water-mark";
 import { CANCELLED, CONFIRMED, HELD, holds, RELEASED, type HoldStatus } from "./schema";
 
-/** 只清理到期且仍為 held 的保留；條件更新使重送與確認後晚到的釋放皆為 no-op。 */
-export async function releaseExpiredHolds(db: DrizzleD1Database, now: number): Promise<number> {
-  const result = await db
-    .update(holds)
-    .set({ status: RELEASED })
-    .where(and(eq(holds.status, HELD), lte(holds.expiresAt, now)))
-    .run();
-  return result.meta.changes;
+/**
+ * 只清理到期且仍為 held 的保留；條件更新使重送與確認後晚到的釋放皆為 no-op。
+ * 到期以高水位的有效時間判定（ADR 0011），`now` 只用來推進高水位。
+ */
+export async function releaseExpiredHolds(d1: D1Database, now: number): Promise<number> {
+  const { changes } = await writeAtEffectiveNow(
+    d1,
+    now,
+    sql`UPDATE holds SET status = ${RELEASED} WHERE ${expiredHold(effectiveNow)}`,
+  );
+  return changes;
 }
 
 /** 保留與訂位共有的欄位；訂位就是已確認的保留，沿用保留的 id。 */

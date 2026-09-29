@@ -11,12 +11,16 @@ export type TimeValue = number | SQL;
 export const activeHold = (now: TimeValue): SQL =>
   and(eq(holds.status, HELD), gt(holds.expiresAt, now))!;
 
+/** 「已到期的保留」唯一的定義：狀態仍是 held 但已過期（`expires_at <= now`），恰為 `activeHold` 在 held 裡的補集；釋放清理的就是這些。 */
+export const expiredHold = (now: TimeValue): SQL =>
+  and(eq(holds.status, HELD), lte(holds.expiresAt, now))!;
+
 /**
  * 「可丟棄的保留紀錄」唯一的定義：已到期的 held，或已釋放的。刪除時段只會連帶刪掉這些；
  * 訂位與任何其他狀態（例如日後的已取消）都不可丟棄，會擋住刪除（ADR 0012）。
  */
 export const discardableHold = (now: TimeValue): SQL =>
-  or(and(eq(holds.status, HELD), lte(holds.expiresAt, now)), eq(holds.status, RELEASED))!;
+  or(expiredHold(now), eq(holds.status, RELEASED))!;
 
 /**
  * 「占住時段的一筆」唯一的定義：有效保留，或訂位（confirmed 不看到期時間，一直占用到取消為止；cancelled 不算）。
