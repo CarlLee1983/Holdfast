@@ -17,7 +17,7 @@ Web Worker（Astro + Workers Static Assets）
   公開網頁、會員頁面、管理後台
    │ Service Binding RPC（ADR 0005）
    ▼
-App Worker（Hono + Application + Domain）
+App Worker（WorkerEntrypoint RPC + Application + Domain）
   會員、資源與時段、保留與訂位
    ├── D1：正式業務資料，防超賣見 ADR 0004
    └── Cron：每分鐘釋放過期保留
@@ -30,7 +30,7 @@ App Worker（Hono + Application + Domain）
 需要 [Bun](https://bun.sh)（僅作套件管理與腳本執行器，執行環境一律是 workerd）。
 
 ```
-apps/app   App Worker：Hono + WorkerEntrypoint RPC、領域邏輯、D1 + Drizzle（依功能分資料夾，例如 catalog）
+apps/app   App Worker：WorkerEntrypoint RPC（沒有 HTTP 路由，不用 HTTP 框架）、領域邏輯、D1 + Drizzle（依功能分資料夾，例如 catalog）
 apps/web   Web Worker：Astro + @astrojs/cloudflare，只經 Service Binding RPC 取資料，沒有 D1 binding
 e2e        Playwright：以建置產物跑兩個 Worker，瀏覽器走過會員主流程
 ```
