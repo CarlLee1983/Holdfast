@@ -15,4 +15,4 @@ export const AUTH_SECRET = "holdfast-e2e-only-secret-not-for-any-real-env";
 
 /** 測試會員與它的 session（直接寫入 E2E 的 D1，不經 OAuth）。 */
 export const MEMBER = { id: "e2e-member", name: "E2E 會員", email: "e2e-member@members.holdfast.invalid" } as const;
-export const SESSION_TOKEN = "e2e-session-token";
+export const SESSION = { id: "e2e-session", token: "e2e-session-token" } as const;

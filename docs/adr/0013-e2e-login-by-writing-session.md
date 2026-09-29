@@ -14,4 +14,4 @@ E2E（#14）需要一個已登入的會員，但會員只能經 LINE／Google OA
 
 **Consequences:** E2E harness 綁定 Better Auth 的 session 資料表與 cookie 簽章格式；升級 Better Auth 若改了其中之一，E2E 會在登入後的第一個斷言失敗（大聲失敗，不會悄悄通過）。E2E 驗證的是 Astro、RPC 與 App Worker 的接線，不驗證 OAuth 本身——OAuth 由 App 測試以替身化的 provider 端點覆蓋。
 
-**Falsified if:** `apps/app/src/auth/auth.ts` 為了測試新增 plugin 或登入方式，或 `apps/app/src/entrypoint.ts` 出現只給測試用的 RPC；或 Better Auth 升級改變了 `apps/app/src/auth/schema.ts` 的 session 資料表或 cookie 簽章格式。
+**Falsified if:** `apps/app/src/auth/auth.ts` 為了測試新增 plugin 或登入方式，或 `apps/app/src/entrypoint.ts` 出現只給測試用的 RPC；或 Better Auth 升級改變了 `apps/app/src/auth/schema.ts` 的 session 資料表或 cookie 簽章格式——此時 `e2e/harness/serve.ts`（寫入 session）與 `e2e/harness/session-cookie.ts`（簽 cookie）要跟著改。

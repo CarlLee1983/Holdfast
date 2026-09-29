@@ -9,7 +9,6 @@
     "noUncheckedIndexedAccess": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true
   },
   "include": ["harness", "tests", "playwright.config.ts"]
