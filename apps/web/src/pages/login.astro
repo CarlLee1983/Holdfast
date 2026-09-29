@@ -1,0 +1,47 @@
+---
+import { safeNextPath } from "../auth/member";
+
+export const prerender = false;
+
+const next = safeNextPath(Astro.url.searchParams.get("next"));
+if (Astro.locals.member) {
+  return Astro.redirect(next, 303);
+}
+---
+
+<!doctype html>
+<html lang="zh-Hant-TW">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>登入｜Holdfast 訂位</title>
+  </head>
+  <body>
+    <h1>登入</h1>
+    <p>用 LINE 或 Google 登入。兩種方式是各自獨立的會員，不會合併。</p>
+    <p id="error" role="alert" hidden></p>
+    <button type="button" data-provider="line" data-next={next}>用 LINE 登入</button>
+    <button type="button" data-provider="google" data-next={next}>用 Google 登入</button>
+    <script>
+      // 發起登入：POST 到 Better Auth，拿到 provider 的授權網址後導向；state cookie 由回應的 Set-Cookie 設定
+      for (const button of document.querySelectorAll<HTMLButtonElement>("button[data-provider]")) {
+        button.addEventListener("click", async () => {
+          const response = await fetch("/api/auth/sign-in/social", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ provider: button.dataset.provider, callbackURL: button.dataset.next }),
+          });
+          const { url } = (await response.json()) as { url?: string };
+          if (response.ok && url) {
+            location.href = url;
+            return;
+          }
+          const error = document.querySelector<HTMLElement>("#error")!;
+          error.textContent = "登入暫時無法使用，請稍後再試。";
+          error.hidden = false;
+        });
+      }
+    </script>
+  </body>
+</html>

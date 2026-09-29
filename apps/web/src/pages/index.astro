@@ -19,6 +19,16 @@ const now = Date.now();
   </head>
   <body>
     <h1>Holdfast 訂位</h1>
+    {
+      Astro.locals.member ? (
+        <p>
+          {Astro.locals.member.name}，已登入。
+          <button type="button" id="sign-out">登出</button>
+        </p>
+      ) : (
+        <p><a href="/login">登入</a></p>
+      )
+    }
     <p>時間皆為台北時間。</p>
     {catalog.length === 0 && <p>目前沒有資源。</p>}
     {
@@ -56,5 +66,16 @@ const now = Date.now();
         </section>
       ))
     }
+    <script>
+      // 登出：Better Auth 的 sign-out 是 POST（需帶 Origin 與 cookie），回應會清掉 session cookie
+      document.querySelector("#sign-out")?.addEventListener("click", async () => {
+        await fetch("/api/auth/sign-out", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: "{}",
+        });
+        location.reload();
+      });
+    </script>
   </body>
 </html>

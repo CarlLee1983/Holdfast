@@ -9,3 +9,10 @@ declare namespace Cloudflare {
 interface Env {
   ACCESS_DEV_JWT?: string;
 }
+
+// 由 src/middleware.ts 依 cookie 向 App Worker 查詢；null = 不是會員
+declare namespace App {
+  interface Locals {
+    member: Awaited<ReturnType<Env["APP"]["getMemberSession"]>>;
+  }
+}
