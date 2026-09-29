@@ -66,6 +66,9 @@ export const createSlotInput = z
     error: "結束時間必須晚於開始時間",
   });
 
+export const listSlotReservationsInput = z.object({ slotId: wholeNumber("時段").positive("時段編號無效") });
+export const cancelBookingInput = z.object({ bookingId: wholeNumber("訂位").positive("訂位編號無效") });
+
 export type CreateResourceInput = z.output<typeof createResourceInput>;
 export type UpdateResourceInput = z.output<typeof updateResourceInput>;
 export type CreateSlotInput = z.output<typeof createSlotInput>;

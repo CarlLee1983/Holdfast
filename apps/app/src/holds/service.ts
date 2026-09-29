@@ -19,7 +19,7 @@ import {
   type MyBooking,
   type MyHold,
 } from "./queries";
-import { CONFIRMED, HELD, RELEASED } from "./schema";
+import { CANCELLED, CONFIRMED, HELD, RELEASED } from "./schema";
 
 export type CreateHoldResult =
   | Result<
@@ -123,6 +123,8 @@ export function createHoldService(d1: D1Database, clock: Clock) {
           return fail("hold_expired");
         case RELEASED:
           // 釋放只會發生在到期之後（#9），對會員而言同樣是已到期
+          return fail("hold_expired");
+        case CANCELLED:
           return fail("hold_expired");
         default: {
           const unhandled: never = own.status;

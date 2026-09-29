@@ -11,9 +11,11 @@ export const HELD = "held";
 export const CONFIRMED = "confirmed";
 /** 過期保留被釋放後的標記（#9）；只是整理，不參與有效與否的判定（ADR 0003）。 */
 export const RELEASED = "released";
+/** 管理者已取消的訂位；不再占用名額。 */
+export const CANCELLED = "cancelled";
 
 /** 所有狀態的聯集；之後新增狀態時加在這裡，依此做窮盡檢查的地方會編譯失敗。 */
-export type HoldStatus = typeof HELD | typeof CONFIRMED | typeof RELEASED;
+export type HoldStatus = typeof HELD | typeof CONFIRMED | typeof RELEASED | typeof CANCELLED;
 
 export const holds = sqliteTable(
   "holds",
@@ -31,6 +33,8 @@ export const holds = sqliteTable(
     idempotencyKey: text("idempotency_key").notNull(),
     /** 來自 Clock，不用 SQL 預設值，測試才能控制時間。 */
     createdAt: integer("created_at").notNull(),
+    cancelledAt: integer("cancelled_at"),
+    cancelledBy: text("cancelled_by").$type<"admin" | "member">(),
   },
   (t) => [
     // 加總已占用名額的子查詢用（ADR 0004）
