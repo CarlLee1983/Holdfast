@@ -19,3 +19,10 @@ export const SESSION = { id: "e2e-session", token: "e2e-session-token" } as cons
 
 /** 登出會讓 session 在 D1 失效；驗證登出的測試用這個獨立的 session，才不會讓共用 SESSION 的其他測試失效。 */
 export const SIGN_OUT_SESSION = { id: "e2e-sign-out-session", token: "e2e-sign-out-session-token" } as const;
+
+/**
+ * 保留倒數測試專用的會員與 session。該測試會留下一筆有效保留，而每位會員同一時段最多一筆、同時最多 3 筆有效保留，
+ * 共用 MEMBER 會與 main-flow 並行衝突，所以另立一位。
+ */
+export const COUNTDOWN_MEMBER = { id: "e2e-countdown-member", name: "E2E 倒數會員", email: "e2e-countdown@members.holdfast.invalid" } as const;
+export const COUNTDOWN_SESSION = { id: "e2e-countdown-session", token: "e2e-countdown-session-token" } as const;

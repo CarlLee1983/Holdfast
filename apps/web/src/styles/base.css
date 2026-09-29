@@ -120,3 +120,16 @@ th { color: var(--muted-foreground); font-weight: 500; }
     padding-inline: var(--space-6);
   }
 }
+
+/* 視覺隱藏但保留給輔助科技（例如預先存在的 aria-live 播報區） */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}

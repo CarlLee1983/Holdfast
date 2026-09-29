@@ -59,30 +59,42 @@ const formatDateTime = (epochMs: number) => `${formatTaipeiDate(epochMs)} ${form
       holds.length === 0 ? (
         <p>目前沒有有效的保留</p>
       ) : (
-        <ul class="card-list">
-          {holds.map((hold) => (
-            <li>
-              <article class="card" aria-labelledby={`hold-${hold.id}-title hold-${hold.id}-date hold-${hold.id}-time`}>
-                <h3 id={`hold-${hold.id}-title`}>{hold.resourceName}</h3>
-                <p class="card-when">
-                  <span id={`hold-${hold.id}-date`}>{formatTaipeiDate(hold.startsAt)}</span>
-                  <span id={`hold-${hold.id}-time`}>
-                    {formatTaipeiTime(hold.startsAt)}–{formatTaipeiTime(hold.endsAt)}
-                  </span>
-                </p>
-                <p class="card-meta">名額 {hold.seats}</p>
-                <p class="card-meta hold-expiry">
-                  請於 <time datetime={new Date(hold.expiresAt).toISOString()}>{formatDateTime(hold.expiresAt)}</time> 前確認
-                </p>
-                <form method="post">
-                  <input type="hidden" name="intent" value={CONFIRM_INTENT} />
-                  <input type="hidden" name="holdId" value={hold.id} />
-                  <button type="submit">確認訂位</button>
-                </form>
-              </article>
-            </li>
-          ))}
-        </ul>
+        <>
+          <div id="hold-announcer" class="visually-hidden" aria-live="polite"></div>
+          <ul class="card-list">
+            {holds.map((hold) => (
+              <li>
+                <article
+                  class="card"
+                  data-remaining-ms={hold.expiresAt - now}
+                  data-label={`${hold.resourceName} ${formatTaipeiDate(hold.startsAt)} ${formatTaipeiTime(hold.startsAt)}`}
+                  aria-labelledby={`hold-${hold.id}-title hold-${hold.id}-date hold-${hold.id}-time`}
+                >
+                  <h3 id={`hold-${hold.id}-title`}>{hold.resourceName}</h3>
+                  <p class="card-when">
+                    <span id={`hold-${hold.id}-date`}>{formatTaipeiDate(hold.startsAt)}</span>
+                    <span id={`hold-${hold.id}-time`}>
+                      {formatTaipeiTime(hold.startsAt)}–{formatTaipeiTime(hold.endsAt)}
+                    </span>
+                  </p>
+                  <p class="card-meta">名額 {hold.seats}</p>
+                  <p class="card-meta hold-expiry">
+                    請於 <time datetime={new Date(hold.expiresAt).toISOString()}>{formatDateTime(hold.expiresAt)}</time> 前確認
+                  </p>
+                  {/* 預設隱藏，由用戶端 script 顯示；沒有 JS 時只剩上面的絕對到期時間 */}
+                  <p class="card-meta hold-countdown" hidden>
+                    剩餘 <span class="countdown-text" aria-live="off"></span>
+                  </p>
+                  <form method="post">
+                    <input type="hidden" name="intent" value={CONFIRM_INTENT} />
+                    <input type="hidden" name="holdId" value={hold.id} />
+                    <button type="submit" data-confirm>確認訂位</button>
+                  </form>
+                </article>
+              </li>
+            ))}
+          </ul>
+        </>
       )
     }
   </section>
@@ -135,6 +147,52 @@ const formatDateTime = (epochMs: number) => `${formatTaipeiDate(epochMs)} ${form
   </section>
 </MemberLayout>
 
+<script>
+  import { formatCountdown, isCountdownExpired } from "../holds/countdown";
+
+  // 起點是伺服器渲染時算出的剩餘毫秒（data-remaining-ms），之後只用單調時間（performance.now）累計經過時間；
+  // 不讀用戶端時鐘的絕對時間，因為到期時鐘在伺服器端（ADR 0011），用戶端時鐘可能偏移。
+  // 取捨：手機休眠時 performance.now() 可能暫停，倒數會落後，但只會比伺服器晚到期（顯示比實際長），
+  // 不會擋掉仍有效的確認；確認能否成立仍完全由伺服器判定
+  const startedAt = performance.now();
+  const announcer = document.querySelector<HTMLElement>("#hold-announcer");
+  const cards = [...document.querySelectorAll<HTMLElement>("article[data-remaining-ms]")].map((card) => ({
+    initialMs: Number(card.dataset.remainingMs),
+    label: card.dataset.label ?? "",
+    countdown: card.querySelector<HTMLElement>(".hold-countdown")!,
+    text: card.querySelector<HTMLElement>(".countdown-text")!,
+    confirm: card.querySelector<HTMLButtonElement>("button[data-confirm]")!,
+    expired: false,
+  }));
+
+  const tick = () => {
+    const elapsed = performance.now() - startedAt;
+    const justExpired: string[] = [];
+    for (const item of cards) {
+      if (item.expired) continue;
+      const remaining = item.initialMs - elapsed;
+      if (!isCountdownExpired(remaining)) {
+        item.text.textContent = formatCountdown(remaining);
+        item.countdown.hidden = false;
+        continue;
+      }
+      item.expired = true;
+      item.confirm.disabled = true;
+      // 卡片內換成純文字；報讀交給頁面上唯一預先存在的 aria-live 區，頁面不自動重新整理
+      item.countdown.textContent = "已到期";
+      item.countdown.classList.add("hold-expired");
+      item.countdown.hidden = false;
+      justExpired.push(`${item.label} 的保留已到期`);
+    }
+    // 同一次 tick 內多筆到期合併成一句，只更新一次播報區
+    if (announcer && justExpired.length > 0) announcer.textContent = justExpired.join("；");
+    if (cards.every((item) => item.expired)) clearInterval(timer);
+  };
+
+  const timer = setInterval(tick, 1000);
+  tick();
+</script>
+
 <style>
   .card-when {
     display: flex;
@@ -148,6 +206,13 @@ const formatDateTime = (epochMs: number) => `${formatTaipeiDate(epochMs)} ${form
     margin: var(--space-1) 0 0;
     font-size: var(--text-sm);
     color: var(--muted-foreground);
+  }
+  .hold-countdown {
+    font-variant-numeric: tabular-nums;
+  }
+  .hold-countdown.hold-expired {
+    color: var(--destructive);
+    font-weight: 600;
   }
   .card form {
     margin-top: var(--space-3);
