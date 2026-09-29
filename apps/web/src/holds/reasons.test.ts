@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { describeHoldFailure, holdFailureStatus } from "./reasons";
+import { describeCancelFailure, describeConfirmFailure, describeHoldFailure, holdFailureStatus } from "./reasons";
 
 describe("建立保留失敗原因轉成訊息", () => {
   it.each([
@@ -31,5 +31,26 @@ describe("建立保留失敗原因轉成訊息", () => {
     expect(holdFailureStatus("insufficient_seats")).toBe(409);
     expect(holdFailureStatus("already_in_slot")).toBe(409);
     expect(holdFailureStatus("active_hold_limit_reached")).toBe(409);
+  });
+});
+
+describe("確認保留失敗原因轉成訊息", () => {
+  it.each([
+    ["hold_expired", "保留已過期，無法確認，請重新保留"],
+    ["hold_not_found", "找不到這筆保留"],
+    ["booking_cancelled", "這筆訂位已取消"],
+    ["invalid_input", "輸入有誤"],
+  ])("%s 有具名的訊息", (reason, text) => {
+    expect(describeConfirmFailure(reason)).toBe(text);
+  });
+});
+
+describe("取消訂位失敗原因轉成訊息", () => {
+  it.each([
+    ["cancellation_cutoff_passed", "已過取消截止時間，無法自行取消"],
+    ["booking_not_found", "找不到這筆訂位"],
+    ["invalid_input", "輸入有誤"],
+  ])("%s 有具名的訊息", (reason, text) => {
+    expect(describeCancelFailure(reason)).toBe(text);
   });
 });

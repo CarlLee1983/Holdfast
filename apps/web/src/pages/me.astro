@@ -1,7 +1,9 @@
 ---
 import { env } from "cloudflare:workers";
 import { loginUrl } from "../auth/member";
-import { handleConfirmPost } from "../holds/confirm";
+import { CANCEL_INTENT } from "../holds/cancel";
+import { CONFIRM_INTENT } from "../holds/confirm";
+import { handleMePost } from "../holds/me-post";
 import { heldNotice } from "../holds/held-notice";
 import { formatTaipeiDate, formatTaipeiTime } from "../catalog/taipei-time";
 
@@ -10,11 +12,11 @@ export const prerender = false;
 const member = Astro.locals.member;
 if (!member) return Astro.redirect(loginUrl(Astro.url), 303);
 
-let confirmError = "";
+let formError = "";
 if (Astro.request.method === "POST") {
-  const outcome = await handleConfirmPost({ member, request: Astro.request, app: env.APP, url: Astro.url });
+  const outcome = await handleMePost({ member, request: Astro.request, app: env.APP, url: Astro.url });
   if ("redirect" in outcome) return Astro.redirect(outcome.redirect, outcome.status);
-  confirmError = outcome.error;
+  formError = outcome.error;
   Astro.response.status = outcome.status;
 }
 
@@ -28,6 +30,9 @@ if (!bookingsResult.ok) throw new Error(`listMyBookings 失敗：${bookingsResul
 const bookings = bookingsResult.data;
 
 const confirmedId = Astro.url.searchParams.get("confirmed");
+// 已取消的訂位不在列表裡，無法像 confirmed 那樣對照列表驗證，所以只檢查格式；訊息本身不含任何資料
+const cancelledId = Astro.url.searchParams.get("cancelled");
+const now = Date.now();
 
 const notice = heldNotice(holds, Astro.url.searchParams.get("held"));
 
@@ -45,8 +50,9 @@ const formatDateTime = (epochMs: number) => `${formatTaipeiDate(epochMs)} ${form
     <h1>我的保留與訂位</h1>
     <h2>我的保留</h2>
     <p><a href="/">回到時段列表</a>　時間皆為台北時間。</p>
-    {confirmError && <p role="alert">{confirmError}</p>}
+    {formError && <p role="alert">{formError}</p>}
     {confirmedId !== null && bookings.some((b) => String(b.id) === confirmedId) && <p role="status">訂位成功</p>}
+    {cancelledId !== null && /^\d+$/.test(cancelledId) && <p role="status">已取消訂位</p>}
     {notice?.kind === "held" && <p role="status">保留成功，請於 {formatDateTime(notice.hold.expiresAt)} 前確認</p>}
     {notice?.kind === "missing" && <p role="status">此保留已過期或不存在</p>}
     {
@@ -76,6 +82,7 @@ const formatDateTime = (epochMs: number) => `${formatTaipeiDate(epochMs)} ${form
                 <td>{formatDateTime(hold.expiresAt)}</td>
                 <td>
                   <form method="post">
+                    <input type="hidden" name="intent" value={CONFIRM_INTENT} />
                     <input type="hidden" name="holdId" value={hold.id} />
                     <button type="submit">確認訂位</button>
                   </form>
@@ -98,6 +105,8 @@ const formatDateTime = (epochMs: number) => `${formatTaipeiDate(epochMs)} ${form
               <th>日期</th>
               <th>時間</th>
               <th>名額</th>
+              <th>取消截止時間</th>
+              <th>取消</th>
             </tr>
           </thead>
           <tbody>
@@ -109,6 +118,18 @@ const formatDateTime = (epochMs: number) => `${formatTaipeiDate(epochMs)} ${form
                   {formatTaipeiTime(booking.startsAt)}–{formatTaipeiTime(booking.endsAt)}
                 </td>
                 <td>{booking.seats}</td>
+                <td>{formatDateTime(booking.cancellableUntil)}</td>
+                <td>
+                  {now <= booking.cancellableUntil ? (
+                    <form method="post">
+                      <input type="hidden" name="intent" value={CANCEL_INTENT} />
+                      <input type="hidden" name="bookingId" value={booking.id} />
+                      <button type="submit">取消訂位</button>
+                    </form>
+                  ) : (
+                    "已過取消截止時間"
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>

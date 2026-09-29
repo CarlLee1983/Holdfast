@@ -6,8 +6,9 @@ import {
   memberActiveHoldCount,
   memberActiveInSlot,
 } from "./member-rules";
+import { cancellableUntil, withinCancellationCutoff } from "./cancellation";
 import { activeHold, occupiedSeats } from "./occupancy";
-import { CONFIRMED, HELD, holds, RELEASED, type HoldStatus } from "./schema";
+import { CANCELLED, CONFIRMED, HELD, holds, RELEASED, type HoldStatus } from "./schema";
 
 /** 只清理到期且仍為 held 的保留；條件更新使重送與確認後晚到的釋放皆為 no-op。 */
 export async function releaseExpiredHolds(db: DrizzleD1Database, now: number): Promise<number> {
@@ -39,7 +40,10 @@ export interface SlotSummary {
 
 export interface MyHold extends HoldRecord, SlotSummary {}
 
-export interface MyBooking extends BookingRecord, SlotSummary {}
+export interface MyBooking extends BookingRecord, SlotSummary {
+  /** 取消截止時刻（UTC epoch 毫秒）：`now <= cancellableUntil` 才能取消。 */
+  cancellableUntil: number;
+}
 
 export interface HoldRequest {
   memberId: string;
@@ -165,21 +169,45 @@ export async function confirmHoldIfActive(
   return result.meta.changes;
 }
 
+/**
+ * 取消的單一條件寫入（ADR 0004）：訂位屬於該會員、狀態為 confirmed、且仍在取消截止時刻內
+ * （定義見 `withinCancellationCutoff`，用資源目前的設定，不做快照）。
+ * 成敗看 `meta.changes`；已取消的重送 changes 為 0，由呼叫端診斷。回傳 `changes`（1 = 已取消）。
+ */
+export async function cancelBookingIfBeforeCutoff(
+  db: DrizzleD1Database,
+  memberId: string,
+  bookingId: number,
+  now: number,
+): Promise<number> {
+  const result = await db.run(sql`
+    UPDATE holds SET status = ${CANCELLED}, cancelled_at = ${now}
+    WHERE id = ${bookingId} AND member_id = ${memberId} AND status = ${CONFIRMED}
+      AND EXISTS (
+        SELECT 1 FROM ${slots} JOIN ${resources} ON ${resources.id} = ${slots.resourceId}
+        WHERE ${slots.id} = ${holds.slotId} AND ${withinCancellationCutoff(now)}
+      )
+  `);
+  return result.meta.changes;
+}
+
 export interface OwnHold {
   id: number;
   slotId: number;
   seats: number;
   status: HoldStatus;
+  /** 只有已取消的訂位有值。 */
+  cancelledAt: number | null;
 }
 
-/** 確認失敗後的唯讀診斷：只讀該會員自己的保留（別人的一律當作不存在）。 */
+/** 確認、取消失敗後的唯讀診斷：只讀該會員自己的保留（別人的一律當作不存在）。 */
 export async function selectOwnHold(
   db: DrizzleD1Database,
   memberId: string,
   holdId: number,
 ): Promise<OwnHold | undefined> {
   const rows = await db
-    .select({ id: holds.id, slotId: holds.slotId, seats: holds.seats, status: holds.status })
+    .select({ id: holds.id, slotId: holds.slotId, seats: holds.seats, status: holds.status, cancelledAt: holds.cancelledAt })
     .from(holds)
     .where(and(eq(holds.id, holdId), eq(holds.memberId, memberId)))
     .limit(1);
@@ -196,6 +224,7 @@ export async function selectBookings(db: DrizzleD1Database, memberId: string): P
       resourceName: resources.name,
       startsAt: slots.startsAt,
       endsAt: slots.endsAt,
+      cancellableUntil,
     })
     .from(holds)
     .innerJoin(slots, eq(slots.id, holds.slotId))
