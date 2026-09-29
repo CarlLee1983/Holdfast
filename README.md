@@ -50,6 +50,42 @@ bun run preview        # astro build 後以 wrangler dev 同時跑兩個 Worker�
 - 測試怎麼替換「現在」：main Worker 與測試跑在同一個 isolate，`test/clock.ts` 的 `setNow()` 偽造全域 `Date`，經 RPC 呼叫的 `systemClock` 就會讀到；因此應用程式碼只能透過 `Clock` 取得時間，直接呼叫 `Date.now()` 或 `new Date()` 會繞過測試的時間控制。
 - 兩個 Worker 都開啟 `observability`（Workers Logs）。部署順序固定 App 先、Web 後（ADR 0005）。
 
+## 部署
+
+兩個環境各有獨立的 D1 與 Worker，資料互不相通。Worker 名稱由 wrangler 的 `env` 加上後綴：
+
+| 環境 | App Worker | Web Worker | D1 |
+| --- | --- | --- | --- |
+| preview | `holdfast-app-preview` | `holdfast-web-preview` | `holdfast-preview` |
+| production | `holdfast-app-production` | `holdfast-web-production` | `holdfast-production` |
+
+不帶 `--env` 的頂層設定只給本機開發與測試使用（本機 D1），不會被部署。各環境的 Web 只綁同環境的 App Worker。
+
+| 觸發 | 工作流程 | 做什麼 |
+| --- | --- | --- |
+| Pull request、push 到 main | `.github/workflows/ci.yml` | `typecheck` 與 `test` |
+| push 到 main | `.github/workflows/deploy.yml` | 部署 production |
+| 手動 `workflow_dispatch`（任何分支） | `.github/workflows/deploy.yml` | 部署 preview |
+
+部署工作流程的順序固定：檢查 secrets → `typecheck` / `test` → 套用 D1 migration → 部署 App → 建置並部署 Web。同一環境的部署排隊執行，不取消進行中的部署。
+
+需要的 GitHub secrets（Settings > Secrets and variables > Actions）；缺少任一個，工作流程在第一步就會失敗並指出缺哪個：
+
+- `CLOUDFLARE_API_TOKEN`：需要 Workers 編輯與 D1 編輯權限
+- `CLOUDFLARE_ACCOUNT_ID`
+
+這兩個 secrets 設在 repo 層級，API token 的權限涵蓋整個 Cloudflare 帳號；任何有 write 權限的人都能從任何分支手動觸發 `workflow_dispatch`（preview）部署。
+
+手動部署的指令（需要自己的 Cloudflare 登入或上述環境變數），`<env>` 為 `preview` 或 `production`：
+
+```sh
+bun run db:migrate:<env>   # 對遠端 D1 套用 migration
+bun run deploy:app:<env>
+bun run deploy:web:<env>   # 以 CLOUDFLARE_ENV=<env> 建置後部署
+```
+
+部署順序（App 先、Web 後）與 migration 的相容規則見 [ADR 0005](docs/adr/0005-web-app-split-via-rpc.md) 與 [ADR 0010](docs/adr/0010-migrations-compatible-with-both-app-versions.md)。
+
 ## MVP 範圍
 
 **納入**：管理者手動管理資源與時段、保留、確認、會員取消與管理者取消、釋放、會員登入（LINE / Google）、管理後台。

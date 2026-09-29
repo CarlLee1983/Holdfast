@@ -10,7 +10,11 @@
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:migrate:local": "wrangler d1 migrations apply holdfast --local --persist-to ../../.wrangler/state",
-    "db:seed:local": "wrangler d1 execute holdfast --local --persist-to ../../.wrangler/state --file=seed/seed.sql"
+    "db:seed:local": "wrangler d1 execute holdfast --local --persist-to ../../.wrangler/state --file=seed/seed.sql",
+    "db:migrate:preview": "wrangler d1 migrations apply DB --env preview --remote",
+    "deploy:preview": "wrangler deploy --env preview",
+    "db:migrate:production": "wrangler d1 migrations apply DB --env production --remote",
+    "deploy:production": "wrangler deploy --env production"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.3"

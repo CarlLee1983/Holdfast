@@ -10,6 +10,12 @@
     "dev": "bun run --filter @holdfast/web dev",
     "db:migrate": "bun run --filter @holdfast/app db:migrate:local",
     "db:seed": "bun run --filter @holdfast/app db:seed:local",
-    "preview": "bun run --filter @holdfast/web preview"
+    "preview": "bun run --filter @holdfast/web preview",
+    "db:migrate:preview": "bun run --filter @holdfast/app db:migrate:preview",
+    "deploy:app:preview": "bun run --filter @holdfast/app deploy:preview",
+    "deploy:web:preview": "bun run --filter @holdfast/web deploy:preview",
+    "db:migrate:production": "bun run --filter @holdfast/app db:migrate:production",
+    "deploy:app:production": "bun run --filter @holdfast/app deploy:production",
+    "deploy:web:production": "bun run --filter @holdfast/web deploy:production"
   }
 }

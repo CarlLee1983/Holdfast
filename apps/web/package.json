@@ -7,7 +7,9 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro build && wrangler dev -c dist/server/wrangler.json -c ../app/wrangler.jsonc --persist-to ../../.wrangler/state",
-    "test": "vitest run"
+    "test": "vitest run",
+    "deploy:preview": "CLOUDFLARE_ENV=preview astro build && wrangler deploy",
+    "deploy:production": "CLOUDFLARE_ENV=production astro build && wrangler deploy"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^14.3.3",

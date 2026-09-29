@@ -8,5 +8,18 @@
   // 只經 Service Binding RPC 呼叫 App Worker（ADR 0005）；這個 Worker 沒有 D1 binding
   "services": [
     { "binding": "APP", "service": "holdfast-app", "entrypoint": "AppEntrypoint" }
-  ]
+  ],
+  // services 不會被 env 繼承；各環境的 Web 只綁同環境的 App Worker（名稱含 -<env> 後綴）
+  "env": {
+    "preview": {
+      "services": [
+        { "binding": "APP", "service": "holdfast-app-preview", "entrypoint": "AppEntrypoint" }
+      ]
+    },
+    "production": {
+      "services": [
+        { "binding": "APP", "service": "holdfast-app-production", "entrypoint": "AppEntrypoint" }
+      ]
+    }
+  }
 }

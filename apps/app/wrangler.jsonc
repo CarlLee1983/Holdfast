@@ -12,5 +12,31 @@
       "database_name": "holdfast",
       "migrations_dir": "migrations"
     }
-  ]
+  ],
+  // d1_databases 不會被 env 繼承，各環境必須自己宣告；Worker 名稱由 wrangler 加上 -<env> 後綴
+  // （holdfast-app-preview / holdfast-app-production）。頂層（無 env）維持本機開發與測試用
+  "env": {
+    "preview": {
+      "workers_dev": false,
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "holdfast-preview",
+          "database_id": "47e5685f-db0d-4260-996d-cb54750fe5ce",
+          "migrations_dir": "migrations"
+        }
+      ]
+    },
+    "production": {
+      "workers_dev": false,
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "holdfast-production",
+          "database_id": "1520c827-5da7-41ea-8886-1dc2cdb8af30",
+          "migrations_dir": "migrations"
+        }
+      ]
+    }
+  }
 }
