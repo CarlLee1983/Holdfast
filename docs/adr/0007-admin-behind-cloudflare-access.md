@@ -10,4 +10,6 @@ status: accepted
 
 **Consequences:** Web Worker 與 App Worker 都不信任前端傳來的管理者身分，只信任 Access JWT（須驗簽，不能只讀 header）。Zero Trust 免費方案的人數上限：官方 account limits 頁未列出，一般認知為 50 人——**推論，待查證**；單一商家的管理者人數遠低於此。
 
+部署環境的 Web Worker 只從自訂網域對外（production `holdfast.gravito.dev`、preview `holdfast-preview.gravito.dev`），並關閉 workers.dev：官方文件只描述 Access 保護「一個 Worker 的 workers.dev URL」整體，未提及路徑層級——**推論**無法只保護 `/admin` 而不擋住公開頁；而留著 workers.dev 等於留一個繞過 Access 的入口。Access 以 self-hosted application 只保護兩個網域的 `/admin` 路徑。
+
 **Falsified if:** 管理者需要 Access 無法表達的權限分級（`CONTEXT.md` 的「管理者」不再是單一角色），或 Access 免費方案條款改變。

@@ -10,13 +10,19 @@
     { "binding": "APP", "service": "holdfast-app", "entrypoint": "AppEntrypoint" }
   ],
   // services 不會被 env 繼承；各環境的 Web 只綁同環境的 App Worker（名稱含 -<env> 後綴）
+  // 部署環境只從自訂網域對外，關閉 workers.dev：Access 只保護自訂網域上的 /admin，
+  // workers.dev 網址會繞過它（ADR 0007）
   "env": {
     "preview": {
+      "workers_dev": false,
+      "routes": [{ "pattern": "holdfast-preview.gravito.dev", "custom_domain": true }],
       "services": [
         { "binding": "APP", "service": "holdfast-app-preview", "entrypoint": "AppEntrypoint" }
       ]
     },
     "production": {
+      "workers_dev": false,
+      "routes": [{ "pattern": "holdfast.gravito.dev", "custom_domain": true }],
       "services": [
         { "binding": "APP", "service": "holdfast-app-production", "entrypoint": "AppEntrypoint" }
       ]

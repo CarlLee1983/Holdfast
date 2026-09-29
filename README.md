@@ -67,10 +67,12 @@ Web Worker 只把請求裡的 `Cf-Access-Jwt-Assertion` 原樣轉交給 App Work
 
 兩個環境各有獨立的 D1 與 Worker，資料互不相通。Worker 名稱由 wrangler 的 `env` 加上後綴：
 
-| 環境 | App Worker | Web Worker | D1 |
-| --- | --- | --- | --- |
-| preview | `holdfast-app-preview` | `holdfast-web-preview` | `holdfast-preview` |
-| production | `holdfast-app-production` | `holdfast-web-production` | `holdfast-production` |
+| 環境 | 網址 | App Worker | Web Worker | D1 |
+| --- | --- | --- | --- | --- |
+| preview | https://holdfast-preview.gravito.dev | `holdfast-app-preview` | `holdfast-web-preview` | `holdfast-preview` |
+| production | https://holdfast.gravito.dev | `holdfast-app-production` | `holdfast-web-production` | `holdfast-production` |
+
+兩個 Worker 在部署環境都不開 workers.dev；Web 只從上表的自訂網域對外（理由見 [ADR 0007](docs/adr/0007-admin-behind-cloudflare-access.md)）。
 
 不帶 `--env` 的頂層設定只給本機開發與測試使用（本機 D1），不會被部署。各環境的 Web 只綁同環境的 App Worker。
 
