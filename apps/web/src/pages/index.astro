@@ -37,16 +37,16 @@ const dateGroups = groupSlotsByTaipeiDate(flattenCatalog(catalog));
     dateGroups.map((group) => (
       <section aria-labelledby={`day-${group.date}`}>
         <h2 id={`day-${group.date}`}>{group.heading}</h2>
-        <ul class="slot-list">
+        <ul class="card-list">
           {group.slots.map((slot) => {
             // 伺服器把超占的剩餘名額以 0 回傳，不會是負數；這裡只是 UI 提示，是否額滿仍由 App Worker 判定
             const availability = slotAvailability(slot.startsAt, slot.remainingSeats, now);
             return (
               <li>
-                <article class="slot-card" aria-labelledby={`slot-${slot.id}-title slot-${slot.id}-time`}>
-                  <header class="slot-head">
+                <article class="card" aria-labelledby={`slot-${slot.id}-title slot-${slot.id}-time`}>
+                  <header class="card-head">
                     <h3 id={`slot-${slot.id}-title`}>{slot.resourceName}</h3>
-                    <span class:list={["badge", { muted: availability !== "open" }]}>
+                    <span class:list={["badge", { "badge--muted": availability !== "open" }]}>
                       {STATUS_LABEL[availability]}
                     </span>
                   </header>
@@ -80,43 +80,6 @@ const dateGroups = groupSlotsByTaipeiDate(flattenCatalog(catalog));
 </MemberLayout>
 
 <style>
-  .slot-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: grid;
-    gap: var(--space-3);
-  }
-  .slot-card {
-    padding: var(--space-4);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    background: var(--background);
-    box-shadow: var(--shadow);
-  }
-  .slot-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    gap: var(--space-3);
-  }
-  .slot-head h3 {
-    margin: 0;
-    font-size: var(--text-base);
-  }
-  .badge {
-    flex-shrink: 0;
-    padding: 0 var(--space-2);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    font-size: var(--text-sm);
-    background: var(--background);
-    color: var(--foreground);
-  }
-  .badge.muted {
-    background: var(--muted);
-    color: var(--muted-foreground);
-  }
   .slot-time {
     margin: var(--space-2) 0 0;
     font-size: var(--text-lg);

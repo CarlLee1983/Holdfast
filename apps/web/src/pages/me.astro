@@ -7,6 +7,7 @@ import { CONFIRM_INTENT } from "../holds/confirm";
 import { handleMePost } from "../holds/me-post";
 import { heldNotice } from "../holds/held-notice";
 import { formatTaipeiDate, formatTaipeiTime } from "../catalog/taipei-time";
+import { bookingCancellation } from "../holds/cancellation";
 import { holdOrBookingStatus } from "../shared/booking-status";
 
 export const prerender = false;
@@ -38,113 +39,129 @@ const now = Date.now();
 
 const notice = heldNotice(holds, Astro.url.searchParams.get("held"));
 
+// 訂位狀態對應的標籤樣式；領域 status 不直接當 CSS class
+const BADGE_VARIANT = { confirmed: "badge--solid", cancelled: "badge--muted" } as const;
+
 const formatDateTime = (epochMs: number) => `${formatTaipeiDate(epochMs)} ${formatTaipeiTime(epochMs)}`;
 ---
 
 <MemberLayout title="我的保留與訂位">
   <h1>我的保留與訂位</h1>
-  <h2>我的保留</h2>
   <p><a href="/">回到時段列表</a>　時間皆為台北時間。</p>
   {formError && <p role="alert">{formError}</p>}
   {confirmedId !== null && bookings.some((b) => String(b.id) === confirmedId && b.status === "confirmed") && <p role="status">訂位成功</p>}
   {cancelledId !== null && /^\d+$/.test(cancelledId) && <p role="status">已取消訂位</p>}
   {notice?.kind === "held" && <p role="status">保留成功，請於 {formatDateTime(notice.hold.expiresAt)} 前確認</p>}
   {notice?.kind === "missing" && <p role="status">此保留已過期或不存在</p>}
-  {
-    holds.length === 0 ? (
-      <p>目前沒有有效的保留</p>
-    ) : (
-      <div class="scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>資源</th>
-              <th>日期</th>
-              <th>時間</th>
-              <th>名額</th>
-              <th>到期時間</th>
-              <th>確認</th>
-            </tr>
-          </thead>
-          <tbody>
-            {holds.map((hold) => (
-              <tr>
-                <td>{hold.resourceName}</td>
-                <td>{formatTaipeiDate(hold.startsAt)}</td>
-                <td>
-                  {formatTaipeiTime(hold.startsAt)}–{formatTaipeiTime(hold.endsAt)}
-                </td>
-                <td>{hold.seats}</td>
-                <td>{formatDateTime(hold.expiresAt)}</td>
-                <td>
-                  <form method="post">
-                    <input type="hidden" name="intent" value={CONFIRM_INTENT} />
-                    <input type="hidden" name="holdId" value={hold.id} />
-                    <button type="submit">確認訂位</button>
-                  </form>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    )
-  }
-  <h2>我的訂位</h2>
-  {
-    bookings.length === 0 ? (
-      <p>目前沒有訂位</p>
-    ) : (
-      <div class="scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>資源</th>
-              <th>日期</th>
-              <th>時間</th>
-              <th>名額</th>
-              <th>狀態</th>
-              <th>取消截止時間</th>
-              <th>取消</th>
-            </tr>
-          </thead>
-          <tbody>
-            {bookings.map((booking) => (
-              <tr>
-                <td>{booking.resourceName}</td>
-                <td>{formatTaipeiDate(booking.startsAt)}</td>
-                <td>
-                  {formatTaipeiTime(booking.startsAt)}–{formatTaipeiTime(booking.endsAt)}
-                </td>
-                <td>{booking.seats}</td>
-                <td>{holdOrBookingStatus(booking)}</td>
-                <td>{formatDateTime(booking.cancellableUntil)}</td>
-                <td>
-                  {booking.status !== "confirmed" ? null : now <= booking.cancellableUntil ? (
+  <section aria-labelledby="holds-heading">
+    <h2 id="holds-heading">我的保留</h2>
+    {
+      holds.length === 0 ? (
+        <p>目前沒有有效的保留</p>
+      ) : (
+        <ul class="card-list">
+          {holds.map((hold) => (
+            <li>
+              <article class="card" aria-labelledby={`hold-${hold.id}-title hold-${hold.id}-date hold-${hold.id}-time`}>
+                <h3 id={`hold-${hold.id}-title`}>{hold.resourceName}</h3>
+                <p class="card-when">
+                  <span id={`hold-${hold.id}-date`}>{formatTaipeiDate(hold.startsAt)}</span>
+                  <span id={`hold-${hold.id}-time`}>
+                    {formatTaipeiTime(hold.startsAt)}–{formatTaipeiTime(hold.endsAt)}
+                  </span>
+                </p>
+                <p class="card-meta">名額 {hold.seats}</p>
+                <p class="card-meta hold-expiry">
+                  請於 <time datetime={new Date(hold.expiresAt).toISOString()}>{formatDateTime(hold.expiresAt)}</time> 前確認
+                </p>
+                <form method="post">
+                  <input type="hidden" name="intent" value={CONFIRM_INTENT} />
+                  <input type="hidden" name="holdId" value={hold.id} />
+                  <button type="submit">確認訂位</button>
+                </form>
+              </article>
+            </li>
+          ))}
+        </ul>
+      )
+    }
+  </section>
+  <section aria-labelledby="bookings-heading">
+    <h2 id="bookings-heading">我的訂位</h2>
+    {
+      bookings.length === 0 ? (
+        <p>目前沒有訂位</p>
+      ) : (
+        <ul class="card-list">
+          {bookings.map((booking) => {
+            const cancellation = bookingCancellation(booking, now);
+            return (
+              <li>
+                <article
+                  class:list={["card", { cancelled: booking.status === "cancelled" }]}
+                  aria-labelledby={`booking-${booking.id}-title booking-${booking.id}-date booking-${booking.id}-time`}
+                >
+                  <header class="card-head">
+                    <h3 id={`booking-${booking.id}-title`}>{booking.resourceName}</h3>
+                    <span class:list={["badge", BADGE_VARIANT[booking.status]]}>{holdOrBookingStatus(booking)}</span>
+                  </header>
+                  <p class="card-when">
+                    <span id={`booking-${booking.id}-date`}>{formatTaipeiDate(booking.startsAt)}</span>
+                    <span id={`booking-${booking.id}-time`}>
+                      {formatTaipeiTime(booking.startsAt)}–{formatTaipeiTime(booking.endsAt)}
+                    </span>
+                  </p>
+                  <p class="card-meta">名額 {booking.seats}</p>
+                  <p class="card-meta">取消截止時間 {formatDateTime(booking.cancellableUntil)}</p>
+                  {cancellation === "cancellable" && (
                     <form method="post">
                       <input type="hidden" name="intent" value={CANCEL_INTENT} />
                       <input type="hidden" name="bookingId" value={booking.id} />
-                      <button type="submit">取消訂位</button>
+                      <button type="submit" class="secondary">取消訂位</button>
                     </form>
-                  ) : (
-                    "已過取消截止時間"
                   )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    )
-  }
-  <h2>帳號</h2>
-  <p><a href="/account/delete">刪除我的帳號</a></p>
+                  {cancellation === "past-cutoff" && <p class="card-meta">已過取消截止時間</p>}
+                </article>
+              </li>
+            );
+          })}
+        </ul>
+      )
+    }
+  </section>
+  <section aria-labelledby="account-heading">
+    <h2 id="account-heading">帳號</h2>
+    <p><a href="/account/delete">刪除我的帳號</a></p>
+  </section>
 </MemberLayout>
 
 <style>
-  /* 暫時：/me 仍是表格，窄螢幕上不撐破整頁，改在容器內橫向捲動。
-     #42 把 /me 改成卡片後刪除這段與 .scroll 容器 */
-  .scroll {
-    overflow-x: auto;
+  .card-when {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-3);
+    margin: var(--space-2) 0 0;
+    font-size: var(--text-lg);
+    font-variant-numeric: tabular-nums;
+  }
+  .card-meta {
+    margin: var(--space-1) 0 0;
+    font-size: var(--text-sm);
+    color: var(--muted-foreground);
+  }
+  .card form {
+    margin-top: var(--space-3);
+  }
+  /* 已取消（含管理者取消）：整張卡片降低對比、標籤改虛線框，與已確認的實心標籤分辨 */
+  .card.cancelled {
+    background: var(--muted);
+    box-shadow: none;
+  }
+  .card.cancelled h3,
+  .card.cancelled .card-when {
+    color: var(--muted-foreground);
+  }
+  .card.cancelled .badge {
+    border-style: dashed;
   }
 </style>

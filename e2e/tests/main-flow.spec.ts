@@ -22,12 +22,14 @@ test("會員主流程：登入 → 看到時段 → 保留 → 確認 → 會員
 
   await expect(page).toHaveURL(/\/me\?held=\d+$/);
   await expect(page.getByRole("status")).toContainText("保留成功");
-  await expect(page.getByRole("row").filter({ hasText: "大廳用餐" })).toHaveCount(1);
+  // 保留卡片的可及名稱是「資源名稱＋日期＋時間」，限定在「我的保留」區塊內
+  const holds = page.getByRole("region", { name: "我的保留" });
+  await expect(holds.getByRole("article", { name: /大廳用餐/ })).toHaveCount(1);
 
   await page.getByRole("button", { name: "確認訂位" }).click();
   await expect(page.getByRole("status")).toHaveText("訂位成功");
   await expect(page.getByText("目前沒有有效的保留")).toBeVisible();
-  const booking = page.getByRole("row").filter({ hasText: "大廳用餐" });
+  const booking = page.getByRole("region", { name: "我的訂位" }).getByRole("article", { name: /大廳用餐/ });
   await expect(booking).toContainText("已訂位");
 
   await booking.getByRole("button", { name: "取消訂位" }).click();
