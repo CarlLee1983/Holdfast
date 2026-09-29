@@ -14,6 +14,12 @@ MVP 的決策已記錄在 `CONTEXT.md` 與 `docs/adr/`，程式碼已開始（`a
 關於 Cloudflare 平台行為的主張（D1、Queues、Service Binding、Workers 的限制與語意），
 寫進 ADR 前要查過官方文件或實測，引用時寫明是**已驗證**還是**推論**。
 
+## Cloudflare 操作
+
+查詢或操作 Cloudflare 帳號上的資源（D1、Workers、Access、logs 等）用 `cf` CLI。
+先以 `cf cli search "<動作與資源類型>"` 找指令，查詢字串只描述動作與資源類型，網域、帳號與資源 ID 留給找到的指令。
+`package.json` 已有腳本的操作（migration、部署、`wrangler types`）照腳本執行。
+
 ## 文件的單一來源
 
 - `CONTEXT.md` 只放詞彙定義，不放決策
