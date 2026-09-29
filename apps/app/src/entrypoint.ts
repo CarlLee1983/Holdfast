@@ -97,7 +97,7 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
     return this.#holds().listMyBookings(memberId);
   }
 
-  /** 刪除會員帳號：未來的訂位取消、有效保留釋放、Better Auth 資料移除；重複呼叫是成功的 no-op。 */
+  /** 刪除會員帳號：未來的訂位取消、保留中的保留（含已過期尚未清理的）釋放、Better Auth 資料移除；重複呼叫是成功的 no-op。 */
   deleteAccount(memberId: string) {
     return this.#account().deleteAccount(memberId);
   }

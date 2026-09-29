@@ -12,7 +12,7 @@ export const CONFIRMED = "confirmed";
 /** 過期保留被釋放後的標記（#9）；只是整理，不參與有效與否的判定（ADR 0003）。 */
 export const RELEASED = "released";
 
-/** 已確認的訂位被取消後的狀態（帳號刪除 #13；會員與管理者取消 #10、#12 沿用）；取消即歸還名額。 */
+/** 已確認的訂位被取消後的狀態；取消即歸還名額。 */
 export const CANCELLED = "cancelled";
 
 /** 所有狀態的聯集；之後新增狀態時加在這裡，依此做窮盡檢查的地方會編譯失敗。 */

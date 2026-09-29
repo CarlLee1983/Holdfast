@@ -1,5 +1,6 @@
 import { AUTH_COOKIE_PREFIX } from "@holdfast/app/auth-paths";
 import { loginUrl } from "../auth/member";
+import { describeDeleteAccountFailure } from "./reasons";
 
 export type DeleteAccountPostOutcome =
   | { redirect: string; status: 303; setCookies: string[] }
@@ -30,6 +31,6 @@ export async function handleDeleteAccountPost({
   if (!member) return { redirect: loginUrl(url), status: 303, setCookies: [] };
 
   const result = await app.deleteAccount(member.memberId);
-  if (!result.ok) return { error: "輸入有誤", status: 422 };
+  if (!result.ok) return { error: describeDeleteAccountFailure(result.reason), status: 422 };
   return { redirect: "/", status: 303, setCookies: [clearedSessionCookie(url)] };
 }

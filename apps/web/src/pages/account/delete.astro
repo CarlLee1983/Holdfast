@@ -12,6 +12,7 @@ let error = "";
 if (Astro.request.method === "POST") {
   const outcome = await handleDeleteAccountPost({ member, app: env.APP, url: Astro.url });
   if ("redirect" in outcome) {
+    // 自己組 Response 而不用 Astro.cookies.delete：middleware 要從回應的 set-cookie header 看到 session cookie 已被清除
     const response = new Response(null, { status: outcome.status, headers: { location: outcome.redirect } });
     for (const setCookie of outcome.setCookies) response.headers.append("set-cookie", setCookie);
     return response;
@@ -32,7 +33,7 @@ if (Astro.request.method === "POST") {
     <h1>刪除帳號</h1>
     {error && <p role="alert">{error}</p>}
     <p>刪除後，你的登入資料會從系統移除，且無法復原。</p>
-    <p><strong>你尚未開始的訂位會一併取消，保留中的名額也會釋放。</strong>之後以同一種方式登入，會是一個全新的會員。</p>
+    <p><strong>你尚未開始的訂位會一併取消，保留中的保留也會釋放。</strong>之後以同一種方式登入，會是一個全新的會員。</p>
     <form method="post">
       <button type="submit">確認刪除帳號</button>
     </form>

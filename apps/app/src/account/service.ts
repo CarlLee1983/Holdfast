@@ -1,12 +1,10 @@
-import { and, eq, gt, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
-import { account, session, user } from "../auth/schema";
-import { slots } from "../catalog/schema";
 import { memberIdInput } from "../holds/input";
-import { CANCELLED, CONFIRMED, HELD, holds, RELEASED } from "../holds/schema";
+import { cancelFutureBookings, releaseMemberHolds } from "../holds/queries";
 import type { Clock } from "../shared/clock";
 import { parseInput } from "../shared/input";
 import { ok, type InvalidInput, type Result } from "../shared/result";
+import { deleteAuthData } from "./queries";
 
 export interface DeleteAccountSummary {
   cancelledBookings: number;
@@ -29,21 +27,10 @@ export function createAccountService(d1: D1Database, clock: Clock) {
       if (!member.ok) return member;
       const id = member.data;
       const now = clock.now();
-      const futureSlots = db.select({ id: slots.id }).from(slots).where(gt(slots.startsAt, now));
-
       const [cancelled, released] = await db.batch([
-        db
-          .update(holds)
-          .set({ status: CANCELLED })
-          .where(and(eq(holds.memberId, id), eq(holds.status, CONFIRMED), inArray(holds.slotId, futureSlots))),
-        // 保留中的一律釋放（含已過期但尚未被清理的），會員不在了，留著沒有意義
-        db
-          .update(holds)
-          .set({ status: RELEASED })
-          .where(and(eq(holds.memberId, id), eq(holds.status, HELD))),
-        db.delete(session).where(eq(session.userId, id)),
-        db.delete(account).where(eq(account.userId, id)),
-        db.delete(user).where(eq(user.id, id)),
+        cancelFutureBookings(db, id, now),
+        releaseMemberHolds(db, id),
+        ...deleteAuthData(db, id),
       ]);
 
       const summary = {

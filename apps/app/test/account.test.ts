@@ -92,6 +92,32 @@ describe("deleteAccount", () => {
     expect(await app.listMyHolds(alice.memberId)).toEqual({ ok: true, data: [] });
   });
 
+  it("已過期但尚未被釋放的保留，刪除後也變已釋放", async () => {
+    const alice = await signUp("g-alice");
+    const id = await book(alice.memberId, 2, "a");
+    setNow(NOW + HOUR / 2); // 保留期限 10 分鐘，已過期但釋放尚未執行
+    expect(await statusOf(id)).toBe("held");
+
+    const result = await app.deleteAccount(alice.memberId);
+
+    expect(result).toEqual({ ok: true, data: { cancelledBookings: 0, releasedHolds: 1 } });
+    expect(await statusOf(id)).toBe("released");
+  });
+
+  it("刪除後以舊會員編號確認其保留：失敗，名額不被占", async () => {
+    const alice = await signUp("g-alice");
+    const id = await book(alice.memberId, 2, "a");
+    // 模擬與刪除交錯的結果：會員已不存在，但這筆保留仍是 held
+    await env.DB.prepare('DELETE FROM session WHERE user_id = ?').bind(alice.memberId).run();
+    await env.DB.prepare('DELETE FROM account WHERE user_id = ?').bind(alice.memberId).run();
+    await env.DB.prepare('DELETE FROM "user" WHERE id = ?').bind(alice.memberId).run();
+
+    expect(await app.confirmHold(alice.memberId, { holdId: id })).toEqual({ ok: false, reason: "hold_not_found" });
+    expect(await statusOf(id)).toBe("held");
+    setNow(NOW + HOUR / 2); // 保留到期後名額歸還，證明它沒有變成永久占用的訂位
+    expect(await remaining()).toBe(10);
+  });
+
   it("已開始（過去）時段的訂位不受影響", async () => {
     const alice = await signUp("g-alice");
     const id = await confirmed(alice.memberId, 1, "a");
