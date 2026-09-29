@@ -9,12 +9,13 @@ const NOW = Date.UTC(2030, 0, 1);
 const TTL = 600_000;
 const app = exports.default;
 
+let resourceId: number;
 let slotId: number;
 
 beforeEach(async () => {
   await resetDb();
   setNow(NOW);
-  const resourceId = await insertResource({ name: "大廳", holdTtlSeconds: TTL / 1000 });
+  resourceId = await insertResource({ name: "大廳", holdTtlSeconds: TTL / 1000 });
   slotId = await insertSlot(resourceId, NOW + 3_600_000, NOW + 7_200_000, 10);
 });
 
@@ -50,14 +51,29 @@ describe("releaseExpiredHolds", () => {
     expect(await app.releaseExpiredHolds()).toEqual({ ok: true, data: { releasedCount: 0 } });
   });
 
-  it("已確認的保留在到期後也保持 confirmed", async () => {
+  it("到期前一刻完成的確認，不被之後才執行的釋放推翻：訂位仍列出、名額仍被占用", async () => {
     const confirmed = await createHold("m1", "confirmed");
     setNow(NOW + TTL - 1);
-    await env.DB.prepare("UPDATE holds SET status = 'confirmed' WHERE id = ?").bind(confirmed).run();
+    expect((await app.confirmHold("m1", { holdId: confirmed })).ok).toBe(true);
 
     setNow(NOW + TTL + 60_000);
     expect(await app.releaseExpiredHolds()).toEqual({ ok: true, data: { releasedCount: 0 } });
     expect(await status(confirmed)).toBe("confirmed");
+    const bookings = await app.listMyBookings("m1");
+    expect(bookings.ok && bookings.data.map((b) => b.id)).toEqual([confirmed]);
+    const slots = await app.listSlots(resourceId);
+    expect(slots.ok && slots.data[0]?.remainingSeats).toBe(9);
+  });
+
+  it("釋放之後，同一會員可立即對同一時段重新保留；已釋放的不再列為有效保留", async () => {
+    const released = await createHold("m1", "old");
+    setNow(NOW + TTL);
+    await app.releaseExpiredHolds();
+
+    const again = await createHold("m1", "new");
+    const holds = await app.listMyHolds("m1");
+    expect(holds.ok && holds.data.map((h) => h.id)).toEqual([again]);
+    expect(await status(released)).toBe("released");
   });
 
   it("scheduled event invokes the release method", async () => {

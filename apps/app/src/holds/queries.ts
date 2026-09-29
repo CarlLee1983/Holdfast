@@ -6,8 +6,8 @@ import {
   memberActiveHoldCount,
   memberActiveInSlot,
 } from "./member-rules";
-import { activeHold, HELD, occupiedSeats } from "./occupancy";
-import { holds, RELEASED } from "./schema";
+import { activeHold, occupiedSeats } from "./occupancy";
+import { CONFIRMED, HELD, holds, RELEASED, type HoldStatus } from "./schema";
 
 /** 只清理到期且仍為 held 的保留；條件更新使重送與確認後晚到的釋放皆為 no-op。 */
 export async function releaseExpiredHolds(db: DrizzleD1Database, now: number): Promise<number> {
@@ -19,18 +19,27 @@ export async function releaseExpiredHolds(db: DrizzleD1Database, now: number): P
   return result.meta.changes;
 }
 
-export interface HoldRecord {
+/** 保留與訂位共有的欄位；訂位就是已確認的保留，沿用保留的 id。 */
+export interface BookingRecord {
   id: number;
   slotId: number;
   seats: number;
+}
+
+export interface HoldRecord extends BookingRecord {
   expiresAt: number;
 }
 
-export interface MyHold extends HoldRecord {
+/** 列表用：資源名稱與時段時間。 */
+export interface SlotSummary {
   resourceName: string;
   startsAt: number;
   endsAt: number;
 }
+
+export interface MyHold extends HoldRecord, SlotSummary {}
+
+export interface MyBooking extends BookingRecord, SlotSummary {}
 
 export interface HoldRequest {
   memberId: string;
@@ -137,4 +146,60 @@ export async function selectActiveHolds(
     .innerJoin(resources, eq(resources.id, slots.resourceId))
     .where(and(eq(holds.memberId, memberId), activeHold(now)))
     .orderBy(asc(holds.expiresAt), asc(holds.id));
+}
+
+/**
+ * 確認的單一條件寫入（ADR 0003、0004）：保留屬於該會員、狀態為保留中、且 `now < expires_at`。
+ * 成敗看 `meta.changes`；釋放有沒有跑不參與判定。回傳 `changes`（1 = 已確認）。
+ */
+export async function confirmHoldIfActive(
+  db: DrizzleD1Database,
+  memberId: string,
+  holdId: number,
+  now: number,
+): Promise<number> {
+  const result = await db.run(sql`
+    UPDATE holds SET status = ${CONFIRMED}
+    WHERE id = ${holdId} AND member_id = ${memberId} AND ${activeHold(now)}
+  `);
+  return result.meta.changes;
+}
+
+export interface OwnHold {
+  id: number;
+  slotId: number;
+  seats: number;
+  status: HoldStatus;
+}
+
+/** 確認失敗後的唯讀診斷：只讀該會員自己的保留（別人的一律當作不存在）。 */
+export async function selectOwnHold(
+  db: DrizzleD1Database,
+  memberId: string,
+  holdId: number,
+): Promise<OwnHold | undefined> {
+  const rows = await db
+    .select({ id: holds.id, slotId: holds.slotId, seats: holds.seats, status: holds.status })
+    .from(holds)
+    .where(and(eq(holds.id, holdId), eq(holds.memberId, memberId)))
+    .limit(1);
+  return rows[0];
+}
+
+/** 會員自己的訂位，依時段開始時間、id 排序。 */
+export async function selectBookings(db: DrizzleD1Database, memberId: string): Promise<MyBooking[]> {
+  return db
+    .select({
+      id: holds.id,
+      slotId: holds.slotId,
+      seats: holds.seats,
+      resourceName: resources.name,
+      startsAt: slots.startsAt,
+      endsAt: slots.endsAt,
+    })
+    .from(holds)
+    .innerJoin(slots, eq(slots.id, holds.slotId))
+    .innerJoin(resources, eq(resources.id, slots.resourceId))
+    .where(and(eq(holds.memberId, memberId), eq(holds.status, CONFIRMED)))
+    .orderBy(asc(slots.startsAt), asc(holds.id));
 }

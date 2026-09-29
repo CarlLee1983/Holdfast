@@ -1,3 +1,9 @@
+/** invalid_input 的訊息後面附第一個欄位錯誤；欄位錯誤由 App 的驗證產生，已是可顯示的文字。 */
+export function withFirstFieldDetail(message: string, fields: Record<string, string[]>): string {
+  const detail = Object.values(fields).flat()[0];
+  return detail ? `${message}：${detail}` : message;
+}
+
 export const GENERIC_MESSAGE = "操作失敗，請稍後再試";
 
 /**
