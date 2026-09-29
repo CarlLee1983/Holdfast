@@ -29,6 +29,8 @@ export const holds = sqliteTable(
   (t) => [
     // 加總已占用名額的子查詢用（ADR 0004）
     index("holds_slot_id_status_expires_at_idx").on(t.slotId, t.status, t.expiresAt),
+    // 定時清理依狀態與到期時間尋找過期保留
+    index("holds_status_expires_at_idx").on(t.status, t.expiresAt),
     uniqueIndex("holds_member_id_idempotency_key_idx").on(t.memberId, t.idempotencyKey),
     // 會員頁列出自己的有效保留
     index("holds_member_id_expires_at_idx").on(t.memberId, t.expiresAt),
