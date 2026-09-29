@@ -7,6 +7,7 @@
   "compatibility_flags": ["nodejs_compat"],
   // 只給 Web Worker 經 Service Binding 呼叫，不對外公開（無 workers.dev、無 routes）
   "workers_dev": false,
+  "triggers": { "crons": ["* * * * *"] },
   "observability": { "enabled": true },
   // Cloudflare Access 驗簽設定（ADR 0007），純文字變數、不是 secret。vars 不會被 env 繼承，各環境自己宣告。
   // 空字串 = 尚未設定，管理 RPC 一律 fail closed（unauthorized）。

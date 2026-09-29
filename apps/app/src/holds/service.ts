@@ -5,6 +5,7 @@ import { parseInput } from "../shared/input";
 import { createHoldInput, memberIdInput } from "./input";
 import {
   insertHoldIfAvailable,
+  releaseExpiredHolds,
   selectActiveHolds,
   selectHoldByKey,
   selectSlotDiagnosis,
@@ -48,6 +49,10 @@ export function createHoldService(d1: D1Database, clock: Clock) {
   }
 
   return {
+    async releaseExpiredHolds() {
+      return ok({ releasedCount: await releaseExpiredHolds(db, clock.now()) });
+    },
+
     async createHold(memberId: unknown, input: unknown): Promise<CreateHoldResult> {
       const member = parseInput(memberIdInput, memberId);
       if (!member.ok) return member;

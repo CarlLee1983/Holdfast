@@ -7,6 +7,7 @@ import { slots } from "../catalog/schema";
  */
 /** 保留仍占著名額時的狀態；定義在這裡（occupancy 也 import 本檔），由 occupancy 對外再匯出。 */
 export const HELD = "held";
+export const RELEASED = "released";
 
 export const holds = sqliteTable(
   "holds",
@@ -18,7 +19,7 @@ export const holds = sqliteTable(
     // 刻意不設外鍵指向 user：帳號刪除（#13）要移除 Better Auth 的 user，但保留與訂位紀錄必須留下
     memberId: text("member_id").notNull(),
     seats: integer("seats").notNull(),
-    /** 目前只有 `held`；#8、#9 會加入 `confirmed`、`released`。 */
+    /** #8 加入 `confirmed`；過期清理由 `released` 標記。 */
     status: text("status").notNull().default(HELD),
     expiresAt: integer("expires_at").notNull(),
     idempotencyKey: text("idempotency_key").notNull(),
