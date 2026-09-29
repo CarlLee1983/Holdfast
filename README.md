@@ -68,7 +68,7 @@ Web Worker 只把請求裡的 `Cf-Access-Jwt-Assertion` 原樣轉交給 App Work
 
 會員用 LINE 或 Google 登入，不設密碼；Better Auth 放在 App Worker、以 Drizzle 存進 D1（[ADR 0008](docs/adr/0008-better-auth-in-app-worker.md)、[ADR 0009](docs/adr/0009-member-is-an-account.md)）。
 Web Worker 的 middleware 把 `/api/auth/*` 原封（`redirect: "manual"`）經 Service Binding 轉給 App Worker，並以 RPC `getMemberSession(cookie)` 取得會員放進 `Astro.locals.member`（`null` = 未登入）。登入頁是 `/login?next=<站內路徑>`，登出是 `POST /api/auth/sign-out`。
-Session 壽命用 Better Auth 預設值（7 天，逾 1 天的請求會延長）；延長時的 Set-Cookie 不會經 RPC 回到瀏覽器，所以瀏覽器 cookie 最多 7 天後失效。
+Session 壽命用 Better Auth 預設值（7 天，逾 1 天的請求會延長）。延長時 Better Auth 產生的 Set-Cookie 隨 `getMemberSession` 的結果（`{ member, setCookies }`）一起回傳，由 middleware 附加到頁面回應，所以瀏覽器 cookie 與 D1 裡的 session 同步延長。沒有 Better Auth session cookie 的請求不會呼叫 RPC；RPC 失敗時 middleware 記一行 `member_session_lookup_failed` 並當作未登入，公開頁面不受影響。
 
 - 兩種登入方式是各自獨立的會員，**不以 email 自動合併**（`accountLinking` 關閉）。
 - LINE 會員的 email 一律是 `line-<sub>@members.holdfast.invalid`，不存 LINE 回傳的 email，所以 LINE 沒提供 email 也能登入。Google 會員存 Google 已驗證的 email。
@@ -88,7 +88,7 @@ Session 壽命用 Better Auth 預設值（7 天，逾 1 天的請求會延長）
 
 1. 在 Google 與 LINE 後台登記 callback：`<BETTER_AUTH_URL>/api/auth/callback/google` 與 `<BETTER_AUTH_URL>/api/auth/callback/line`（本機也要登記 `http://localhost:4321/...`，埠被占用時 astro 會換埠，callback 就對不上）。
 2. 填 `apps/app/wrangler.jsonc` 該環境的 `BETTER_AUTH_URL`。
-3. 設定 secrets（各環境各一組，值互不共用）：`cd apps/app && bunx wrangler secret put BETTER_AUTH_SECRET --env <env>`，其餘四個同理。secrets 沒設齊時 `wrangler deploy` 或第一個請求會因載入失敗而報錯，這是預期行為；部署工作流程目前不檢查這些 secrets。
+3. 設定 secrets（各環境各一組，值互不共用）：`cd apps/app && bunx wrangler secret put BETTER_AUTH_SECRET --env <env>`，其餘四個同理。secrets 沒設齊時 App Worker 載入會失敗，這是預期行為；部署工作流程會在 migration 之前檢查（見「部署」）。
 
 **本機開發**：複製 `apps/app/.dev.vars.example` 為 `apps/app/.dev.vars`（已 gitignore，與 `admin:dev-token` 寫入的鍵並存）並填值。測試不需要它，`apps/app/vitest.config.ts` 會注入假值。
 
@@ -111,7 +111,9 @@ Session 壽命用 Better Auth 預設值（7 天，逾 1 天的請求會延長）
 | push 到 main | `.github/workflows/deploy.yml` | 部署 production |
 | 手動 `workflow_dispatch`（任何分支） | `.github/workflows/deploy.yml` | 部署 preview |
 
-部署工作流程的順序固定：檢查 secrets → `typecheck` / `test` → 套用 D1 migration → 部署 App → 建置並部署 Web。同一環境的部署排隊執行，不取消進行中的部署。
+部署工作流程的順序固定：檢查 secrets → 檢查會員登入設定 → `typecheck` / `test` → 套用 D1 migration → 部署 App → 建置並部署 Web。同一環境的部署排隊執行，不取消進行中的部署。
+
+會員登入設定檢查（`apps/app/scripts/check-auth-deploy.ts`）在 migration 之前執行：該環境在 `apps/app/wrangler.jsonc` 的 `BETTER_AUTH_URL` 為空，或 `wrangler secret list --env <env>` 缺少任何必要 secret（清單見「會員登入」），流程就中止並指出缺哪些，避免 migration 套完卻部署出一個載入不了的 App Worker。所以新環境要先把 `BETTER_AUTH_URL` 填好並設定 secrets，才能第一次部署；`wrangler secret list` 需要 Worker 已存在，全新環境若無法列出，也會中止並提示（先用 `wrangler secret put` 建立）。
 
 需要的 GitHub secrets（Settings > Secrets and variables > Actions）；缺少任一個，工作流程在第一步就會失敗並指出缺哪個：
 
