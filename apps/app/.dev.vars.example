@@ -1,4 +1,4 @@
-# 複製成 .dev.vars（已 gitignore）後填入；缺任何一個，App Worker 一載入就失敗。
+# 複製成 .dev.vars（已 gitignore）後填入；缺任何一個，會員登入就不可用（catalog 與管理 RPC 不受影響）。
 # 本機用的值：BETTER_AUTH_SECRET 至少 32 字元，例如 `openssl rand -base64 32`。
 # GOOGLE_* 與 LINE_* 要填真的 OAuth client 才能實際登入；只想跑起來可先填任意非空字串。
 BETTER_AUTH_SECRET=
