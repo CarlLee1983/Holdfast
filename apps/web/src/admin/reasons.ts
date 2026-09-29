@@ -10,6 +10,8 @@ const MESSAGES: Record<string, string> = {
   resource_not_found: "找不到這個資源",
   slot_overlaps: "與這個資源既有的時段重疊",
   invalid_input: "輸入有誤，請修正後再送出",
+  booking_not_found: "找不到這筆訂位",
+  slot_not_found: "找不到這個時段",
 };
 
 /** 把管理 RPC 的失敗結果轉成表單上顯示的訊息；`unauthorized` 由頁面另外處理（403）。 */
