@@ -1,11 +1,16 @@
+import { sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
+import { SQLiteSyncDialect } from "drizzle-orm/sqlite-core";
 import type { z } from "zod";
 import { resourceExists, selectResources, type ResourceSummary } from "../catalog/queries";
 import type { Clock } from "../shared/clock";
 import { fail, ok, type InvalidInput, type Result } from "../shared/result";
 import { createAccessVerifier, type AccessConfig, type AccessIdentity } from "./access";
 import { parseInput } from "../shared/input";
-import { createResourceInput, createSlotInput, updateResourceInput } from "./input";
+import { discardableHold } from "../holds/occupancy";
+import { holds } from "../holds/schema";
+import { createResourceInput, createSlotInput, deleteSlotInput, updateResourceInput, updateSlotCapacityInput } from "./input";
+import { selectAdminSlots, slotExists, type AdminSlot } from "./queries";
 
 export interface SlotRecord {
   id: number;
@@ -20,6 +25,8 @@ type AdminResult<T, Reason extends string = never> =
   | InvalidInput;
 
 const AUDIT_COLUMNS = "actor_email, action, target_type, target_id, at, detail";
+
+const dialect = new SQLiteSyncDialect();
 
 export function createAdminService(d1: D1Database, clock: Clock, accessConfig: AccessConfig) {
   const db = drizzle(d1);
@@ -86,6 +93,35 @@ export function createAdminService(d1: D1Database, clock: Clock, accessConfig: A
          RETURNING detail`,
       )
       .bind(actor.email, clock.now(), JSON.stringify(after), resourceId);
+  }
+
+  /** 把 drizzle 的 SQL 片段組成 D1 語句，才能與其他語句放進同一個 `d1.batch`（drizzle 的 `db.run` 不能進 D1 batch）。 */
+  function toD1Statement(query: SQL) {
+    const { sql: text, params } = dialect.sqlToQuery(query);
+    return d1.prepare(text).bind(...params);
+  }
+
+  /**
+   * 「時段的保留紀錄全都可丟棄」的條件片段（沒有任何有效保留、訂位或其他狀態的紀錄）；
+   * 稽核、刪保留、刪時段三句共用，判定不會分歧。為什麼只丟棄這些：ADR 0012。
+   */
+  const slotHasOnlyDiscardableHolds = (slotId: number, now: number) =>
+    sql`NOT EXISTS (SELECT 1 FROM ${holds} WHERE ${holds.slotId} = ${slotId} AND NOT ${discardableHold(now)})`;
+
+  /**
+   * 調整容量的稽核 INSERT，必須放在 UPDATE 之前（同 auditResourceUpdateBeforeWrite）：
+   * 先讀舊容量，連同新容量寫成 detail。時段不存在時不寫。RETURNING 把 detail 帶回來供 log 使用。
+   */
+  function auditSlotCapacityBeforeWrite(actor: AccessIdentity, slotId: number, capacity: number) {
+    return d1
+      .prepare(
+        `INSERT INTO admin_audit (${AUDIT_COLUMNS})
+         SELECT ?1, 'slot.update_capacity', 'slot', id, ?2,
+           json_object('before', json_object('capacity', capacity), 'after', json_object('capacity', ?3))
+         FROM slots WHERE id = ?4
+         RETURNING detail`,
+      )
+      .bind(actor.email, clock.now(), capacity, slotId);
   }
 
   /** Workers Logs 的結構化一行；只在寫入成功後才呼叫。 */
@@ -182,6 +218,74 @@ export function createAdminService(d1: D1Database, clock: Clock, accessConfig: A
         const id = insert!.meta.last_row_id;
         logAudit(actor, "slot.create", "slot", id, slot);
         return ok({ id, ...slot });
+      });
+    },
+
+    async listSlotsForAdmin(
+      jwt: unknown,
+      resourceId: number,
+    ): Promise<AdminResult<AdminSlot[], "resource_not_found">> {
+      const auth = await verifier.verify(jwt);
+      if (!auth.ok) return auth;
+      if (!(await resourceExists(db, resourceId))) return fail("resource_not_found");
+      return ok(await selectAdminSlots(db, resourceId, clock.now()));
+    },
+
+    updateSlotCapacity(
+      jwt: unknown,
+      input: unknown,
+    ): Promise<AdminResult<SlotRecord, "slot_not_found">> {
+      return authorizedWrite(jwt, updateSlotCapacityInput, input, async (actor, { slotId, capacity }) => {
+        // 不檢查已占用：調到低於占用就是超占，由「占用 > 容量」即時算出，不存旗標。
+        // 順序固定：稽核（讀舊容量）在前，UPDATE 在後；時段不存在時兩句都不影響任何列
+        const [audit, update] = await d1.batch<{
+          id: number;
+          resource_id: number;
+          starts_at: number;
+          ends_at: number;
+          detail: string;
+        }>([
+          auditSlotCapacityBeforeWrite(actor, slotId, capacity),
+          d1
+            .prepare("UPDATE slots SET capacity = ? WHERE id = ? RETURNING id, resource_id, starts_at, ends_at")
+            .bind(capacity, slotId),
+        ]);
+        const row = update!.results[0];
+        if (!row) return fail("slot_not_found");
+        logAudit(actor, "slot.update_capacity", "slot", slotId, JSON.parse(audit!.results[0]!.detail));
+        return ok({
+          id: row.id,
+          resourceId: row.resource_id,
+          startsAt: row.starts_at,
+          endsAt: row.ends_at,
+          capacity,
+        });
+      });
+    },
+
+    deleteSlot(jwt: unknown, input: unknown): Promise<AdminResult<{ id: number }, "slot_not_found" | "slot_in_use">> {
+      return authorizedWrite(jwt, deleteSlotInput, input, async (actor, { slotId }) => {
+        // 「保留紀錄全都可丟棄」的判定與刪除在同一個 batch（同一交易）內以條件寫入完成（ADR 0004），
+        // 不先讀再刪。三句共用同一個 now 與條件，所以要嘛全部生效、要嘛都不動，成敗看最後一句的 changes。
+        // 順序固定：稽核（讀時段內容）→ 移除可丟棄的保留紀錄（holds.slot_id 外鍵要求，ADR 0012）→ 刪時段
+        const now = clock.now();
+        const guard = slotHasOnlyDiscardableHolds(slotId, now);
+        const [, , deletion] = await d1.batch([
+          toD1Statement(sql`
+            INSERT INTO admin_audit (${sql.raw(AUDIT_COLUMNS)})
+            SELECT ${actor.email}, 'slot.delete', 'slot', id, ${now},
+              json_object('resourceId', resource_id, 'startsAt', starts_at, 'endsAt', ends_at, 'capacity', capacity)
+            FROM slots WHERE id = ${slotId} AND ${guard}
+          `),
+          toD1Statement(sql`DELETE FROM ${holds} WHERE ${holds.slotId} = ${slotId} AND ${guard}`),
+          toD1Statement(sql`DELETE FROM slots WHERE id = ${slotId} AND ${guard}`),
+        ]);
+        if (deletion!.meta.changes === 0) {
+          // 失敗之後才分辨原因（只用來選 reason，不影響是否刪除）
+          return (await slotExists(db, slotId)) ? fail("slot_in_use") : fail("slot_not_found");
+        }
+        logAudit(actor, "slot.delete", "slot", slotId, null);
+        return ok({ id: slotId });
       });
     },
   };
