@@ -4,6 +4,7 @@ import { loginUrl } from "../auth/member";
 import { handleConfirmPost } from "../holds/confirm";
 import { heldNotice } from "../holds/held-notice";
 import { formatTaipeiDate, formatTaipeiTime } from "../catalog/taipei-time";
+import { reservationStatus } from "../admin/slot-reservations";
 
 export const prerender = false;
 
@@ -98,6 +99,7 @@ const formatDateTime = (epochMs: number) => `${formatTaipeiDate(epochMs)} ${form
               <th>日期</th>
               <th>時間</th>
               <th>名額</th>
+              <th>狀態</th>
             </tr>
           </thead>
           <tbody>
@@ -109,6 +111,7 @@ const formatDateTime = (epochMs: number) => `${formatTaipeiDate(epochMs)} ${form
                   {formatTaipeiTime(booking.startsAt)}–{formatTaipeiTime(booking.endsAt)}
                 </td>
                 <td>{booking.seats}</td>
+                <td>{reservationStatus(booking, Date.now())}</td>
               </tr>
             ))}
           </tbody>

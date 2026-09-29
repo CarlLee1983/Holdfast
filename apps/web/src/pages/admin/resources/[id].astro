@@ -69,13 +69,14 @@ const slotErrors = slotFailure?.fields ?? {};
         {
           slots?.ok && slots.data.length > 0 && (
             <table>
-              <thead><tr><th>日期</th><th>時間</th><th>容量</th></tr></thead>
+              <thead><tr><th>日期</th><th>時間</th><th>容量</th><th></th></tr></thead>
               <tbody>
                 {slots.data.map((s) => (
                   <tr>
                     <td>{formatTaipeiDate(s.startsAt)}</td>
                     <td>{formatTaipeiTime(s.startsAt)}–{formatTaipeiTime(s.endsAt)}</td>
                     <td>{s.capacity}</td>
+                    <td><a href={`/admin/slots/${s.id}`}>查看保留與訂位</a></td>
                   </tr>
                 ))}
               </tbody>
