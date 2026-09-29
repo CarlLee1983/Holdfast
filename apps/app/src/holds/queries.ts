@@ -1,4 +1,4 @@
-import { and, asc, eq, lte, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, lte, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { resources, slots } from "../catalog/schema";
 import {
@@ -7,7 +7,7 @@ import {
   memberActiveInSlot,
 } from "./member-rules";
 import { activeHold, occupiedSeats } from "./occupancy";
-import { CONFIRMED, HELD, holds, RELEASED, type HoldStatus } from "./schema";
+import { CANCELLED, CONFIRMED, HELD, holds, RELEASED, type HoldStatus } from "./schema";
 
 /** 只清理到期且仍為 held 的保留；條件更新使重送與確認後晚到的釋放皆為 no-op。 */
 export async function releaseExpiredHolds(db: DrizzleD1Database, now: number): Promise<number> {
@@ -39,7 +39,11 @@ export interface SlotSummary {
 
 export interface MyHold extends HoldRecord, SlotSummary {}
 
-export interface MyBooking extends BookingRecord, SlotSummary {}
+export interface MyBooking extends BookingRecord, SlotSummary {
+  status: typeof CONFIRMED | typeof CANCELLED;
+  cancelledAt: number | null;
+  cancelledBy: "admin" | "member" | null;
+}
 
 export interface HoldRequest {
   memberId: string;
@@ -188,11 +192,14 @@ export async function selectOwnHold(
 
 /** 會員自己的訂位，依時段開始時間、id 排序。 */
 export async function selectBookings(db: DrizzleD1Database, memberId: string): Promise<MyBooking[]> {
-  return db
+  const rows = await db
     .select({
       id: holds.id,
       slotId: holds.slotId,
       seats: holds.seats,
+      status: holds.status,
+      cancelledAt: holds.cancelledAt,
+      cancelledBy: holds.cancelledBy,
       resourceName: resources.name,
       startsAt: slots.startsAt,
       endsAt: slots.endsAt,
@@ -200,6 +207,7 @@ export async function selectBookings(db: DrizzleD1Database, memberId: string): P
     .from(holds)
     .innerJoin(slots, eq(slots.id, holds.slotId))
     .innerJoin(resources, eq(resources.id, slots.resourceId))
-    .where(and(eq(holds.memberId, memberId), eq(holds.status, CONFIRMED)))
+    .where(and(eq(holds.memberId, memberId), inArray(holds.status, [CONFIRMED, CANCELLED])))
     .orderBy(asc(slots.startsAt), asc(holds.id));
+  return rows.map((row) => ({ ...row, status: row.status as MyBooking["status"] }));
 }
