@@ -271,13 +271,14 @@ export async function selectBookings(db: DrizzleD1Database, memberId: string): P
 
 /**
  * 帳號刪除用：會員未來時段（`starts_at > 有效時間`）的訂位改為已取消；已開始時段的是歷史紀錄，不動。回傳 batch 用的語句。
+ * 取消者記為會員（刪帳號是會員自己的操作），取消時間是與判定同一個有效時間（#32）。
  * 時間是高水位的有效時間，必須放進 `batchAtEffectiveNow` 執行（ADR 0011）。
  */
 export function cancelFutureBookings(db: DrizzleD1Database, memberId: string) {
   const futureSlots = db.select({ id: slots.id }).from(slots).where(gt(slots.startsAt, effectiveNow));
   return db
     .update(holds)
-    .set({ status: CANCELLED })
+    .set({ status: CANCELLED, cancelledAt: effectiveNow, cancelledBy: "member" })
     .where(and(eq(holds.memberId, memberId), eq(holds.status, CONFIRMED), inArray(holds.slotId, futureSlots)));
 }
 
