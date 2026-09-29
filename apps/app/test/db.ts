@@ -90,7 +90,7 @@ export async function setSlotCapacity(slotId: number, capacity: number): Promise
 export async function insertHold(
   slotId: number,
   seats: number,
-  status: "held" | "confirmed" | "released",
+  status: string,
   expiresAt: number,
   memberId = `m${Math.random()}`,
 ): Promise<number> {

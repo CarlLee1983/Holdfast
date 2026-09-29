@@ -15,7 +15,7 @@ export interface AdminSlot {
 }
 
 /**
- * 管理者看的時段列表：含已結束的時段（才能清理），並帶出占用與超占狀態。
+ * 管理者看的時段列表：含已結束的時段（沒有訂位的可以刪除清理），並帶出占用與超占狀態。
  * 占用的定義只在 `occupiedSeats`（ADR 0004），這裡不重新定義。
  */
 export async function selectAdminSlots(

@@ -392,13 +392,23 @@ describe("deleteSlot", () => {
     expect(await countRows("admin_audit")).toBe(0);
   });
 
-  it("只剩已過期或已釋放的保留：可刪除，這些無效紀錄一併移除", async () => {
+  it("只剩已過期或已釋放的保留（含剛好到期）：可刪除，這些無效紀錄一併移除", async () => {
     await insertHold(slotId, 2, "held", NOW);
     await insertHold(slotId, 2, "released", NOW - HOUR);
 
     expect((await app.deleteSlot(jwt, { slotId })).ok).toBe(true);
     expect(await countRows("slots")).toBe(0);
     expect(await countRows("holds")).toBe(0);
+  });
+
+  it("有訂位、其他狀態（例如日後的已取消）的紀錄：回傳 slot_in_use，不會被連帶刪除（ADR 0012）", async () => {
+    await insertHold(slotId, 2, "released", NOW - HOUR);
+    await insertHold(slotId, 2, "cancelled", NOW - HOUR);
+
+    expect(await app.deleteSlot(jwt, { slotId })).toEqual({ ok: false, reason: "slot_in_use" });
+    expect(await countRows("slots")).toBe(1);
+    expect(await countRows("holds")).toBe(2);
+    expect(await countRows("admin_audit")).toBe(0);
   });
 
   it("不影響其他時段的保留", async () => {
