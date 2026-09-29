@@ -8,6 +8,7 @@
   "scripts": {
     "typecheck": "bun run --filter '*' typecheck",
     "test": "bun run --filter '*' test",
+    "test:coverage": "bun run --filter '*' test:coverage",
     "e2e": "bun run --filter @holdfast/e2e e2e",
     "dev": "bun run --filter @holdfast/web dev",
     "db:migrate": "bun run --filter @holdfast/app db:migrate:local",

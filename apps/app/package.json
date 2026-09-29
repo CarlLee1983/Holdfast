@@ -9,6 +9,7 @@
   "scripts": {
     "typecheck": "wrangler types --strict-vars=false && tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "admin:dev-token": "bun scripts/admin-dev-token.ts",
     "auth:generate": "bunx auth@1.7.6 generate --config auth.cli.ts --output src/auth/schema.ts --yes",
     "db:generate": "drizzle-kit generate",
@@ -28,6 +29,7 @@
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.22.0",
     "@types/node": "^26.6.3",
+    "@vitest/coverage-istanbul": "^4.1.0",
     "drizzle-kit": "^0.31.11",
     "typescript": "^6",
     "vitest": "^4.1.0",
