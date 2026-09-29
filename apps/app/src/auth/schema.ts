@@ -1,5 +1,6 @@
+// 由 `bun run auth:generate` 產生，唯一的手動修改是 account 的 (provider_id, account_id) 唯一索引（見下方註解）。
 import { relations, sql } from "drizzle-orm";
-import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, index, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const user = sqliteTable("user", {
   id: text("id").primaryKey(),
@@ -66,7 +67,12 @@ export const account = sqliteTable(
       .$onUpdate(() => /* @__PURE__ */ new Date())
       .notNull(),
   },
-  (table) => [index("account_userId_idx").on(table.userId)],
+  (table) => [
+    index("account_userId_idx").on(table.userId),
+    // 偏離 `auth generate` 的輸出（產生器不建這個索引），重新產生 schema 後必須保留：
+    // 同一個 LINE / Google 身分只能對應一筆 account，是防止重複建帳的縱深防禦（ADR 0009）
+    uniqueIndex("account_provider_account_uidx").on(table.providerId, table.accountId),
+  ],
 );
 
 export const verification = sqliteTable(

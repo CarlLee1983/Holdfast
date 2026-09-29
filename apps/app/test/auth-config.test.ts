@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { parseAuthConfig } from "../src/auth/config";
+import { findMissingAuthSettings } from "../src/auth/deploy-check";
 
 const VALID = {
   BETTER_AUTH_SECRET: "test-secret-test-secret-test-secret-0000",
@@ -56,5 +57,45 @@ describe("parseAuthConfig", () => {
       expect(message).toContain(name);
     }
     expect(message).not.toContain("secret-value");
+  });
+});
+
+describe("findMissingAuthSettings（部署前檢查）", () => {
+  const ALL_SECRETS = [
+    "BETTER_AUTH_SECRET",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
+    "LINE_CHANNEL_ID",
+    "LINE_CHANNEL_SECRET",
+  ];
+
+  it("URL 與所有 secrets 都有時沒有缺漏", () => {
+    expect(
+      findMissingAuthSettings({ authUrl: "https://holdfast.example", secretNames: ALL_SECRETS }),
+    ).toEqual([]);
+  });
+
+  it("BETTER_AUTH_URL 空字串或未宣告都算缺", () => {
+    expect(findMissingAuthSettings({ authUrl: "", secretNames: ALL_SECRETS })).toEqual([
+      "BETTER_AUTH_URL",
+    ]);
+    expect(findMissingAuthSettings({ authUrl: undefined, secretNames: ALL_SECRETS })).toEqual([
+      "BETTER_AUTH_URL",
+    ]);
+  });
+
+  it("列出所有沒有設定的 secret", () => {
+    expect(
+      findMissingAuthSettings({
+        authUrl: "https://holdfast.example",
+        secretNames: ["BETTER_AUTH_SECRET", "GOOGLE_CLIENT_ID"],
+      }),
+    ).toEqual(["GOOGLE_CLIENT_SECRET", "LINE_CHANNEL_ID", "LINE_CHANNEL_SECRET"]);
+  });
+
+  it("與 parseAuthConfig 要求的 secrets 是同一份清單", () => {
+    expect(
+      findMissingAuthSettings({ authUrl: "https://holdfast.example", secretNames: [] }),
+    ).toEqual(ALL_SECRETS);
   });
 });

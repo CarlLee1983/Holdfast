@@ -14,7 +14,9 @@ const AUTH_PATH_PREFIX = "/api/auth/";
 
 /**
  * App Worker 對外的介面（ADR 0005）：Web Worker 經 Service Binding 呼叫這些 RPC 方法。
- * 每個方法回傳 `Result`，業務拒絕以具名 reason 表達。
+ * 業務方法回傳 `Result`，業務拒絕以具名 reason 表達；`getMemberSession` 是例外：
+ * 「不是會員」是常態而不是拒絕，且要一併帶回 Set-Cookie，所以回傳 `MemberSessionLookup`。
+ * `fetch` 只處理 `/api/auth/`，回傳 Better Auth 的 Response。
  */
 export class AppEntrypoint extends WorkerEntrypoint<Env> {
   #catalog() {
@@ -41,7 +43,7 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
     return this.#auth().handler(request);
   }
 
-  /** 以瀏覽器的 cookie 換會員資訊；不是會員時回 null。 */
+  /** 以瀏覽器的 cookie 換會員資訊；不是會員時 `member` 為 null。`setCookies` 要原樣附加到回給瀏覽器的回應。 */
   getMemberSession(cookie: string) {
     return readMemberSession(this.#auth(), cookie);
   }

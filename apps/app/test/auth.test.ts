@@ -12,6 +12,11 @@ async function userEmails(): Promise<string[]> {
   return results.map((row) => row.email);
 }
 
+/** getMemberSession 回傳 { member, setCookies }；多數測試只關心 member。 */
+async function memberOf(cookie: string) {
+  return (await app.getMemberSession(cookie)).member;
+}
+
 async function sessionCount(): Promise<number> {
   const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM session").first<{ n: number }>();
   return row!.n;
@@ -33,7 +38,7 @@ describe("會員登入（LINE 與 Google）", () => {
     expect(login.location).toBe("/");
     expect(login.sessionCookie).toBeDefined();
     expect(await userEmails()).toEqual(["alice@example.com"]);
-    expect(await app.getMemberSession(login.sessionCookie!)).toMatchObject({ name: "Alice" });
+    expect(await memberOf(login.sessionCookie!)).toMatchObject({ name: "Alice" });
   });
 
   it("LINE 沒有提供 email 時登入不被拒絕，會員 email 是 placeholder", async () => {
@@ -64,8 +69,8 @@ describe("會員登入（LINE 與 Google）", () => {
     expect(line.sessionCookie).toBeDefined();
     expect(await userEmails()).toEqual(["line-u1@members.holdfast.invalid", "same@example.com"]);
     const [googleMember, lineMember] = await Promise.all([
-      app.getMemberSession(google.sessionCookie!),
-      app.getMemberSession(line.sessionCookie!),
+      memberOf(google.sessionCookie!),
+      memberOf(line.sessionCookie!),
     ]);
     expect(googleMember!.memberId).not.toBe(lineMember!.memberId);
   });
@@ -88,9 +93,37 @@ describe("會員登入（LINE 與 Google）", () => {
     const second = await loginWith("line", { sub: "U1", name: "Dan" });
 
     expect(await userEmails()).toEqual(["line-u1@members.holdfast.invalid"]);
-    expect((await app.getMemberSession(second.sessionCookie!))!.memberId).toBe(
-      (await app.getMemberSession(first.sessionCookie!))!.memberId,
+    expect((await memberOf(second.sessionCookie!))!.memberId).toBe(
+      (await memberOf(first.sessionCookie!))!.memberId,
     );
+  });
+});
+
+describe("帳號連結關閉", () => {
+  beforeEach(resetDb);
+  afterEach(() => vi.restoreAllMocks());
+
+  // 單靠 accountLinking 關閉就足以擋下 email 合併：Google 的 email 是已驗證的，
+  // 所以不是「未驗證 email 不信任」這條規則擋的
+  it("同一個 email、不同 Google 身分再登入：被拒絕，不併入第一位會員", async () => {
+    await loginWith("google", {
+      sub: "g-1",
+      email: "same@example.com",
+      email_verified: true,
+      name: "First",
+    });
+    const second = await loginWith("google", {
+      sub: "g-2",
+      email: "same@example.com",
+      email_verified: true,
+      name: "Second",
+    });
+
+    expect(second.sessionCookie).toBeUndefined();
+    expect(second.location).toContain("account_not_linked");
+    expect(await userEmails()).toEqual(["same@example.com"]);
+    const accounts = await env.DB.prepare("SELECT COUNT(*) AS n FROM account").first<{ n: number }>();
+    expect(accounts!.n).toBe(1);
   });
 });
 
@@ -99,8 +132,11 @@ describe("session", () => {
   afterEach(() => vi.restoreAllMocks());
 
   it("沒有 cookie 或 cookie 無效時不是會員", async () => {
-    expect(await app.getMemberSession("")).toBeNull();
-    expect(await app.getMemberSession("better-auth.session_token=bogus")).toBeNull();
+    expect(await app.getMemberSession("")).toEqual({ member: null, setCookies: [] });
+    expect(await app.getMemberSession("better-auth.session_token=bogus")).toEqual({
+      member: null,
+      setCookies: [],
+    });
   });
 
   it("只回傳 Web 需要的欄位，不含 session token", async () => {
@@ -111,9 +147,24 @@ describe("session", () => {
       name: "Alice",
     });
 
-    const member = await app.getMemberSession(login.sessionCookie!);
+    const member = await memberOf(login.sessionCookie!);
     expect(Object.keys(member!).sort()).toEqual(["expiresAt", "memberId", "name"]);
     expect(typeof member!.expiresAt).toBe("number");
+  });
+
+  it("session 逾 updateAge 被延長時，RPC 一併回傳要送給瀏覽器的 Set-Cookie", async () => {
+    const login = await loginWith("google", { sub: "g-1", email: "a@example.com", name: "Alice" });
+    const fresh = await app.getMemberSession(login.sessionCookie!);
+    expect(fresh.setCookies).toEqual([]);
+
+    // 把到期日拉近到超過 1 天（預設 updateAge）沒有延長的程度
+    const nearExpiry = Date.now() + 5 * 24 * 3600_000;
+    await env.DB.prepare("UPDATE session SET expires_at = ?").bind(nearExpiry).run();
+
+    const refreshed = await app.getMemberSession(login.sessionCookie!);
+    expect(refreshed.member).not.toBeNull();
+    expect(refreshed.setCookies.some((c: string) => c.startsWith("better-auth.session_token="))).toBe(true);
+    expect(refreshed.member!.expiresAt).toBeGreaterThan(nearExpiry);
   });
 
   it("登出後 session 失效，且只刪除該會員的 session", async () => {
@@ -129,8 +180,8 @@ describe("session", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(await app.getMemberSession(alice.sessionCookie!)).toBeNull();
-    expect(await app.getMemberSession(bob.sessionCookie!)).not.toBeNull();
+    expect(await memberOf(alice.sessionCookie!)).toBeNull();
+    expect(await memberOf(bob.sessionCookie!)).not.toBeNull();
     expect(await sessionCount()).toBe(1);
   });
 });

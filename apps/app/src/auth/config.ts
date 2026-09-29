@@ -13,6 +13,15 @@ const authEnvSchema = z.object({
   LINE_CHANNEL_SECRET: required,
 });
 
+/** 必須以 secret 設定的變數（其餘的 `BETTER_AUTH_URL` 是 wrangler.jsonc 的 vars）；部署前檢查共用這份清單。 */
+export const AUTH_SECRET_NAMES = [
+  "BETTER_AUTH_SECRET",
+  "GOOGLE_CLIENT_ID",
+  "GOOGLE_CLIENT_SECRET",
+  "LINE_CHANNEL_ID",
+  "LINE_CHANNEL_SECRET",
+] as const satisfies readonly (keyof typeof authEnvSchema.shape)[];
+
 export interface OAuthClient {
   clientId: string;
   clientSecret: string;
