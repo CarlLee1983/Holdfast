@@ -1,6 +1,25 @@
-/** 只有 `/api/auth/` 底下的請求原封轉給 App Worker（ADR 0008）。 */
+import { AUTH_COOKIE_PREFIX, AUTH_PATH_PREFIX } from "@holdfast/app/auth-paths";
+
+/**
+ * 只有 `/api/auth/` 底下的請求原封轉給 App Worker（ADR 0008）。
+ * 前綴來自 App 的 `src/auth/paths.ts`（與 Better Auth 的 `basePath` 同一個常數）；該檔案不 import 任何東西，
+ * 所以這個執行期 import 只會把兩個字串常數打進 Web bundle。
+ */
 export function isAuthPath(pathname: string): boolean {
-  return pathname.startsWith("/api/auth/");
+  return pathname.startsWith(AUTH_PATH_PREFIX);
+}
+
+/**
+ * 轉給 App 的 auth 請求所帶的標頭：移除用戶端可自行指定的 `X-Forwarded-*`，App 的限流不信任它們；
+ * 來源 IP 只認 `cf-connecting-ip`（Cloudflare 邊緣設定，Web 收到什麼就原樣帶什麼，沒有就不帶）。
+ * 回傳新的 Headers，不改動輸入。
+ */
+export function forwardedAuthHeaders(incoming: Headers): Headers {
+  const headers = new Headers(incoming);
+  for (const name of [...headers.keys()]) {
+    if (name.startsWith("x-forwarded-")) headers.delete(name);
+  }
+  return headers;
 }
 
 // 只用來判斷「解析後是不是仍在站內」，不會出現在結果裡
@@ -28,9 +47,13 @@ export function loginUrl(url: URL): string {
   return `/login?next=${encodeURIComponent(url.pathname + url.search)}`;
 }
 
-/** Better Auth 的 session cookie（https 下帶 `__Secure-` 前綴）。沒有它就不必問 App Worker。 */
+/**
+ * Better Auth 的 session cookie（https 下帶 `__Secure-` 前綴）。沒有它就不必問 App Worker。
+ * cookie 名稱是 `<前綴>.session_token`，前綴是 App `createAuth` 的 `advanced.cookiePrefix`，
+ * 兩邊共用 `src/auth/paths.ts` 的 `AUTH_COOKIE_PREFIX`；Better Auth 改了 cookie 命名規則時要一起檢查這裡。
+ */
+const SESSION_COOKIE = new RegExp(`^(__Secure-)?${AUTH_COOKIE_PREFIX}\\.session_token=`);
+
 export function hasSessionCookie(cookieHeader: string): boolean {
-  return cookieHeader
-    .split(";")
-    .some((part) => /^(__Secure-)?better-auth\.session_token=/.test(part.trim()));
+  return cookieHeader.split(";").some((part) => SESSION_COOKIE.test(part.trim()));
 }

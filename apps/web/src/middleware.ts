@@ -1,12 +1,13 @@
 import { env } from "cloudflare:workers";
 import { defineMiddleware } from "astro:middleware";
-import { hasSessionCookie, isAuthPath } from "./auth/member";
+import { forwardedAuthHeaders, hasSessionCookie, isAuthPath } from "./auth/member";
 
 export const onRequest = defineMiddleware(async (context, next) => {
   // 登入、回呼、登出都由 App Worker 的 Better Auth 處理；redirect 要原樣（302 + Location）回給瀏覽器，
-  // 不能在 Worker 內被追隨，所以明確設 manual
+  // 不能在 Worker 內被追隨，所以明確設 manual。標頭經 forwardedAuthHeaders 過濾（App 的限流只認 cf-connecting-ip）
   if (isAuthPath(context.url.pathname)) {
-    return env.APP.fetch(new Request(context.request, { redirect: "manual" }));
+    const headers = forwardedAuthHeaders(context.request.headers);
+    return env.APP.fetch(new Request(context.request, { redirect: "manual", headers }));
   }
 
   // 沒有 session cookie 就不打 RPC。session 是否有效完全由 App 判斷，Web 只把結果放進 locals；

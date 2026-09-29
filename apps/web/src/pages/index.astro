@@ -68,20 +68,17 @@ const now = Date.now();
       ))
     }
     <script>
+      import { requestSignOut } from "../auth/client";
+
       // 登出：Better Auth 的 sign-out 是 POST（需帶 Origin 與 cookie），回應會清掉 session cookie
       document.querySelector("#sign-out")?.addEventListener("click", async () => {
-        const response = await fetch("/api/auth/sign-out", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: "{}",
-        });
-        if (!response.ok) {
-          const error = document.querySelector<HTMLElement>("#sign-out-error")!;
-          error.textContent = "登出失敗，請稍後再試。";
-          error.hidden = false;
+        if (await requestSignOut(fetch)) {
+          location.reload();
           return;
         }
-        location.reload();
+        const error = document.querySelector<HTMLElement>("#sign-out-error")!;
+        error.textContent = "登出失敗，請稍後再試。";
+        error.hidden = false;
       });
     </script>
   </body>

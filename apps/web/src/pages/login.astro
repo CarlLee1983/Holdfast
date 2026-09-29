@@ -24,16 +24,14 @@ if (Astro.locals.member) {
     <button type="button" data-provider="line" data-next={next}>用 LINE 登入</button>
     <button type="button" data-provider="google" data-next={next}>用 Google 登入</button>
     <script>
-      // 發起登入：POST 到 Better Auth，拿到 provider 的授權網址後導向；state cookie 由回應的 Set-Cookie 設定
+      import { requestSocialLogin } from "../auth/client";
+
+      // 發起登入：POST 到 Better Auth，拿到 provider 的授權網址後導向；state cookie 由回應的 Set-Cookie 設定。
+      // 任何失敗（含網路錯誤與 5xx）都顯示同一則訊息
       for (const button of document.querySelectorAll<HTMLButtonElement>("button[data-provider]")) {
         button.addEventListener("click", async () => {
-          const response = await fetch("/api/auth/sign-in/social", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ provider: button.dataset.provider, callbackURL: button.dataset.next }),
-          });
-          const { url } = (await response.json()) as { url?: string };
-          if (response.ok && url) {
+          const url = await requestSocialLogin(fetch, button.dataset.provider ?? "", button.dataset.next ?? "/");
+          if (url) {
             location.href = url;
             return;
           }

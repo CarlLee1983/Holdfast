@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hasSessionCookie, isAuthPath, loginUrl, safeNextPath } from "./member";
+import { forwardedAuthHeaders, hasSessionCookie, isAuthPath, loginUrl, safeNextPath } from "./member";
 
 describe("isAuthPath", () => {
   it("只有 /api/auth/ 底下的路徑要轉給 App Worker", () => {
@@ -59,5 +59,21 @@ describe("hasSessionCookie", () => {
     expect(hasSessionCookie("theme=dark")).toBe(false);
     expect(hasSessionCookie("better-auth.state=xyz")).toBe(false);
     expect(hasSessionCookie("x-better-auth.session_token_lookalike=1")).toBe(false);
+  });
+});
+
+describe("forwardedAuthHeaders", () => {
+  it("移除所有 X-Forwarded-*（不分大小寫），保留 cf-connecting-ip 與其他標頭，且不改動輸入", () => {
+    const incoming = new Headers({
+      "cf-connecting-ip": "203.0.113.7",
+      "X-Forwarded-For": "198.51.100.1",
+      "x-forwarded-host": "evil.example",
+      cookie: "a=b",
+    });
+
+    const result = forwardedAuthHeaders(incoming);
+
+    expect(Object.fromEntries(result)).toEqual({ "cf-connecting-ip": "203.0.113.7", cookie: "a=b" });
+    expect(incoming.get("x-forwarded-for")).toBe("198.51.100.1");
   });
 });

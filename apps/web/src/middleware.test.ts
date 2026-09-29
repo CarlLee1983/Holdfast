@@ -65,6 +65,43 @@ describe("/api/auth/* 轉發", () => {
   });
 });
 
+describe("/api/auth/* 轉發的來源 IP 標頭", () => {
+  it("不轉送用戶端帶的 X-Forwarded-*，並帶上 Web 收到的 cf-connecting-ip", async () => {
+    app.fetch.mockResolvedValue(new Response("{}"));
+
+    await run("https://holdfast.example/api/auth/sign-in/social", {
+      method: "POST",
+      headers: {
+        "cf-connecting-ip": "203.0.113.7",
+        "x-forwarded-for": "198.51.100.1, 10.0.0.1",
+        "x-forwarded-host": "evil.example",
+        "x-forwarded-proto": "http",
+        origin: "https://holdfast.example",
+      },
+      body: "{}",
+    });
+
+    const forwarded = app.fetch.mock.calls[0]![0];
+    expect(forwarded.headers.get("cf-connecting-ip")).toBe("203.0.113.7");
+    expect([...forwarded.headers.keys()].filter((name) => name.startsWith("x-forwarded-"))).toEqual([]);
+    expect(forwarded.headers.get("origin")).toBe("https://holdfast.example");
+  });
+
+  it("Web 沒收到 cf-connecting-ip 時，也不會有人為指定的來源 IP 標頭", async () => {
+    app.fetch.mockResolvedValue(new Response("{}"));
+
+    await run("https://holdfast.example/api/auth/sign-out", {
+      method: "POST",
+      headers: { "x-forwarded-for": "198.51.100.1" },
+      body: "{}",
+    });
+
+    const forwarded = app.fetch.mock.calls[0]![0];
+    expect(forwarded.headers.has("cf-connecting-ip")).toBe(false);
+    expect(forwarded.headers.has("x-forwarded-for")).toBe(false);
+  });
+});
+
 describe("會員 session 放進 locals", () => {
   it("沒有 Better Auth session cookie 時不呼叫 RPC（別的 cookie 也不算）", async () => {
     const { locals } = await run("https://holdfast.example/", { headers: { cookie: "theme=dark" } });
