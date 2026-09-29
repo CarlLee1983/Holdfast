@@ -1,10 +1,10 @@
 import { expect, test } from "@playwright/test";
 import { COUNTDOWN_SESSION } from "../harness/constants";
+import { holdableSlot } from "../harness/slots";
 import { memberSessionCookie } from "../harness/session-cookie";
 
 // 只驗證瀏覽器端：快轉的是瀏覽器時鐘，伺服器的到期判定不在這裡測。
-// 用專用會員（不與 main-flow 共用有效保留的名額限制）；保留的是「大廳用餐」最後一個時段，
-// main-flow 用的是第一個，兩者不會搶同一個時段。
+// 用專用會員（不與 main-flow 共用有效保留的名額限制）；保留的時段見 harness/slots.ts。
 // 快轉量取遠大於任何合理保留期限的 24 小時，而不引用 seed 的 hold_ttl_seconds：測試不必隨 TTL 設定調整。
 const FAST_FORWARD_MS = 24 * 60 * 60 * 1000;
 
@@ -13,10 +13,7 @@ test("保留倒數：歸零後顯示已到期，確認訂位按鈕停用", async
   await page.clock.install();
 
   await page.goto("/");
-  const lobby = page
-    .getByRole("article", { name: "大廳用餐" })
-    .filter({ has: page.getByRole("button", { name: "保留" }) })
-    .last();
+  const lobby = holdableSlot(page, "countdown");
   await lobby.getByRole("button", { name: "保留" }).click();
   await expect(page).toHaveURL(/\/me\?held=\d+$/);
 
