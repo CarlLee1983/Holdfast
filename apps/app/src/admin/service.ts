@@ -1,6 +1,6 @@
 import { sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
-import { SQLiteSyncDialect } from "drizzle-orm/sqlite-core";
+import { toD1Statement } from "../shared/d1-statement";
 import type { z } from "zod";
 import { resourceExists, selectResources, type ResourceSummary } from "../catalog/queries";
 import type { Clock } from "../shared/clock";
@@ -53,8 +53,6 @@ type AdminResult<T, Reason extends string = never> =
   | InvalidInput;
 
 const AUDIT_COLUMNS = "actor_email, action, target_type, target_id, at, detail";
-
-const dialect = new SQLiteSyncDialect();
 
 export function createAdminService(d1: D1Database, clock: Clock, accessConfig: AccessConfig) {
   const db = drizzle(d1);
@@ -121,12 +119,6 @@ export function createAdminService(d1: D1Database, clock: Clock, accessConfig: A
          RETURNING detail`,
       )
       .bind(actor.email, clock.now(), JSON.stringify(after), resourceId);
-  }
-
-  /** 把 drizzle 的 SQL 片段組成 D1 語句，才能與其他語句放進同一個 `d1.batch`（drizzle 的 `db.run` 不能進 D1 batch）。 */
-  function toD1Statement(query: SQL) {
-    const { sql: text, params } = dialect.sqlToQuery(query);
-    return d1.prepare(text).bind(...params);
   }
 
   /**
@@ -350,14 +342,14 @@ export function createAdminService(d1: D1Database, clock: Clock, accessConfig: A
         const now = clock.now();
         const guard = slotHasOnlyDiscardableHolds(slotId, now);
         const [, , deletion] = await d1.batch([
-          toD1Statement(sql`
+          toD1Statement(d1, sql`
             INSERT INTO admin_audit (${sql.raw(AUDIT_COLUMNS)})
             SELECT ${actor.email}, 'slot.delete', 'slot', id, ${now},
               json_object('resourceId', resource_id, 'startsAt', starts_at, 'endsAt', ends_at, 'capacity', capacity)
             FROM slots WHERE id = ${slotId} AND ${guard}
           `),
-          toD1Statement(sql`DELETE FROM ${holds} WHERE ${holds.slotId} = ${slotId} AND ${guard}`),
-          toD1Statement(sql`DELETE FROM slots WHERE id = ${slotId} AND ${guard}`),
+          toD1Statement(d1, sql`DELETE FROM ${holds} WHERE ${holds.slotId} = ${slotId} AND ${guard}`),
+          toD1Statement(d1, sql`DELETE FROM slots WHERE id = ${slotId} AND ${guard}`),
         ]);
         if (deletion!.meta.changes === 0) {
           // 失敗之後才分辨原因（只用來選 reason，不影響是否刪除）

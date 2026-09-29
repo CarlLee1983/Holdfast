@@ -83,8 +83,9 @@ export function createHoldService(d1: D1Database, clock: Clock) {
 
       const request: HoldRequest = { memberId: member.data, ...parsed.data };
       const now = clock.now();
-      const changes = await insertHoldIfAvailable(db, request, now);
-      if (changes === 0) return diagnose(request, now);
+      const { changes, effectiveNow } = await insertHoldIfAvailable(d1, request, now);
+      // 診斷要解釋的是以有效時間判定的那次寫入，不是請求帶來的 now
+      if (changes === 0) return diagnose(request, effectiveNow);
 
       // 剛寫入的那一筆以（會員, 冪等鍵）取回；這組鍵有唯一約束，一定是它
       const created = await selectHoldByKey(db, request.memberId, request.idempotencyKey);
@@ -113,7 +114,7 @@ export function createHoldService(d1: D1Database, clock: Clock) {
       if (!parsed.ok) return parsed;
 
       const { holdId } = parsed.data;
-      const changes = await confirmHoldIfActive(db, member.data, holdId, clock.now());
+      const changes = await confirmHoldIfActive(d1, member.data, holdId, clock.now());
       // 寫入之後再讀：成功時就是剛確認的那筆；changes = 0 時診斷原因，只影響回應，不影響正確性
       const own = await selectOwnHold(db, member.data, holdId);
       if (!own) return fail("hold_not_found");

@@ -8,6 +8,7 @@ import {
 } from "./member-rules";
 import { cancellableUntil, withinCancellationCutoff } from "./cancellation";
 import { activeHold, occupiedSeats } from "./occupancy";
+import { effectiveNow, writeAtEffectiveNow, type BumpedWriteResult } from "../shared/high-water-mark";
 import { CANCELLED, CONFIRMED, HELD, holds, RELEASED, type HoldStatus } from "./schema";
 
 /** 只清理到期且仍為 held 的保留；條件更新使重送與確認後晚到的釋放皆為 no-op。 */
@@ -60,27 +61,31 @@ export interface HoldRequest {
  * 保留期限在語句內從資源讀出，所以修改期限只影響之後的保留。
  * 會員層級的兩條規則（同時段不重複、有效保留不超過上限）也在這句裡，不另設檢查步驟。
  * 冪等鍵重複（同會員同鍵）時 `ON CONFLICT DO NOTHING`，changes 為 0，由呼叫端診斷。
- * 回傳 `changes`（1 = 已寫入）。
+ * 語句裡的時間一律是高水位的有效時間（ADR 0011），`now` 只用來推進高水位。
+ * 回傳 `changes`（1 = 已寫入）與寫入採用的有效時間（失敗後診斷用）。
  */
 export async function insertHoldIfAvailable(
-  db: DrizzleD1Database,
+  d1: D1Database,
   request: HoldRequest,
   now: number,
-): Promise<number> {
+): Promise<BumpedWriteResult> {
   const { memberId, slotId, seats, idempotencyKey } = request;
-  const result = await db.run(sql`
+  return writeAtEffectiveNow(
+    d1,
+    now,
+    sql`
     INSERT INTO holds (slot_id, member_id, seats, status, expires_at, idempotency_key, created_at)
-    SELECT s.id, ${memberId}, ${seats}, ${HELD}, ${now} + r.hold_ttl_seconds * 1000, ${idempotencyKey}, ${now}
+    SELECT s.id, ${memberId}, ${seats}, ${HELD}, ${effectiveNow} + r.hold_ttl_seconds * 1000, ${idempotencyKey}, ${effectiveNow}
     FROM slots s JOIN resources r ON r.id = s.resource_id
     WHERE s.id = ${slotId}
-      AND s.starts_at > ${now}
+      AND s.starts_at > ${effectiveNow}
       AND ${seats} <= r.seats_per_hold
-      AND NOT ${memberActiveInSlot(memberId, sql`s.id`, now)}
-      AND ${memberActiveHoldCount(memberId, now)} < ${MAX_ACTIVE_HOLDS_PER_MEMBER}
-      AND ${occupiedSeats(sql`s.id`, now)} + ${seats} <= s.capacity
+      AND NOT ${memberActiveInSlot(memberId, sql`s.id`, effectiveNow)}
+      AND ${memberActiveHoldCount(memberId, effectiveNow)} < ${MAX_ACTIVE_HOLDS_PER_MEMBER}
+      AND ${occupiedSeats(sql`s.id`, effectiveNow)} + ${seats} <= s.capacity
     ON CONFLICT (member_id, idempotency_key) DO NOTHING
-  `);
-  return result.meta.changes;
+  `,
+  );
 }
 
 const holdColumns = {
@@ -158,20 +163,25 @@ export async function selectActiveHolds(
 /**
  * 確認的單一條件寫入（ADR 0003、0004）：保留屬於該會員、狀態為保留中、且 `now < expires_at`。
  * 會員帳號必須仍存在，避免與帳號刪除交錯後留下屬於已刪除會員、永久占名額的訂位。
+ * 語句裡的時間是高水位的有效時間（ADR 0011），`now` 只用來推進高水位。
  * 成敗看 `meta.changes`；釋放有沒有跑不參與判定。回傳 `changes`（1 = 已確認）。
  */
 export async function confirmHoldIfActive(
-  db: DrizzleD1Database,
+  d1: D1Database,
   memberId: string,
   holdId: number,
   now: number,
 ): Promise<number> {
-  const result = await db.run(sql`
+  const { changes } = await writeAtEffectiveNow(
+    d1,
+    now,
+    sql`
     UPDATE holds SET status = ${CONFIRMED}
-    WHERE id = ${holdId} AND member_id = ${memberId} AND ${activeHold(now)}
+    WHERE id = ${holdId} AND member_id = ${memberId} AND ${activeHold(effectiveNow)}
       AND ${memberExists(memberId)}
-  `);
-  return result.meta.changes;
+  `,
+  );
+  return changes;
 }
 
 /**

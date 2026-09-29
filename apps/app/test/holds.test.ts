@@ -476,6 +476,28 @@ describe("confirmHold（ADR 0003）", () => {
     });
   });
 
+  it("到期後建立的保留先落地，帶到期前時間的確認晚到：確認不成立，時段不超占（ADR 0011）", async () => {
+    const small = await insertSlot(resourceId, NOW + HOUR, NOW + 2 * HOUR, 4);
+    const a = holdId(await app.createHold("m1", hold(4, "a", small)));
+
+    setNow(NOW + TTL_SECONDS * 1000);
+    expect((await app.createHold("m2", hold(4, "b", small))).ok).toBe(true);
+
+    setNow(NOW + TTL_SECONDS * 1000 - 1);
+    expect(await app.confirmHold("m1", { holdId: a })).toEqual({ ok: false, reason: "hold_expired" });
+    // remaining 有 MAX(…,0) 下限，看不出超占；改確認 A 從未成為訂位
+    expect(await bookings("m1")).toEqual([]);
+  });
+
+  it("診斷用的是寫入實際採用的有效時間：時鐘已被推過時段開始，較早的請求得到 slot_started（ADR 0011）", async () => {
+    const later = await insertSlot(resourceId, NOW + 3 * HOUR, NOW + 4 * HOUR, 10);
+    setNow(NOW + HOUR);
+    expect((await app.createHold("m2", hold(1, "b", later))).ok).toBe(true);
+
+    setNow(NOW + HOUR - 1);
+    expect(await app.createHold("m1", hold(1, "a"))).toEqual({ ok: false, reason: "slot_started" });
+  });
+
   it("到期後確認被拒絕（釋放尚未執行，列仍在表裡），名額不會因此被占回", async () => {
     const created = await app.createHold("m1", hold(3, "k"));
     setNow(NOW + TTL_SECONDS * 1000 + 5000);
