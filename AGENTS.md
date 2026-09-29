@@ -18,3 +18,17 @@ Holdfast 還在決策階段：只有文件，沒有程式碼。架構與技術�
 
 - `CONTEXT.md` 只放詞彙定義，不放決策
 - 決策與理由放 `docs/adr/`，其他文件連結過去，不重述取捨
+
+## Agent skills
+
+### Issue tracker
+
+Issue 放在 GitHub Issues（`CarlLee1983/Holdfast`），用 `gh` CLI 操作。See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+使用五個預設 label：`needs-triage`、`needs-info`、`ready-for-agent`、`ready-for-human`、`wontfix`。See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context：repo 根目錄一份 `CONTEXT.md` 加 `docs/adr/`。See `docs/agents/domain.md`.
