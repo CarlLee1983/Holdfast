@@ -374,7 +374,22 @@ describe("會員層級的保留規則（#7）", () => {
     });
   });
 
-  it.todo("#8：同一時段已有有效訂位時回 already_in_slot；訂位不計入有效保留額度");
+  it("同一時段已有有效訂位（已確認）時再保留：already_in_slot，保留過期也不影響", async () => {
+    const created = await app.createHold("m1", hold(1, "a"));
+    await app.confirmHold("m1", { holdId: holdId(created) });
+    setNow(NOW + TTL_SECONDS * 1000); // 原保留的到期時間已過，但訂位不看到期時間
+
+    expect(await app.createHold("m1", hold(1, "b"))).toEqual({ ok: false, reason: "already_in_slot" });
+  });
+
+  it("訂位不計入有效保留額度：3 筆訂位之後仍可再保留", async () => {
+    const slots = [slotId, await slotAt(3), await slotAt(4)];
+    for (const [i, slot] of slots.entries()) {
+      await app.confirmHold("m1", { holdId: holdId(await app.createHold("m1", hold(1, `b-${i}`, slot))) });
+    }
+
+    expect((await app.createHold("m1", hold(1, "d", await slotAt(5)))).ok).toBe(true);
+  });
 
   it("併發：同一會員對同一時段送 5 筆（不同鍵），恰好 1 筆成功", async () => {
     const results = await Promise.all(Array.from({ length: 5 }, (_, i) => app.createHold("m1", hold(1, `k-${i}`))));
@@ -402,6 +417,14 @@ async function bookings(member: string) {
 }
 
 describe("confirmHold（ADR 0003）", () => {
+  it("已被釋放的保留（#9）確認時回 hold_expired，不是錯誤", async () => {
+    const created = await app.createHold("m1", hold(1, "k"));
+    setNow(NOW + TTL_SECONDS * 1000);
+    await app.releaseExpiredHolds();
+
+    expect(await app.confirmHold("m1", { holdId: holdId(created) })).toEqual({ ok: false, reason: "hold_expired" });
+  });
+
   it("到期前確認成功：回傳訂位，保留離開有效保留、進入訂位列表，名額仍被占用", async () => {
     const created = await app.createHold("m1", hold(3, "k"));
     const id = holdId(created);

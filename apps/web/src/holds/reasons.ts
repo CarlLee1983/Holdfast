@@ -30,7 +30,7 @@ export function describeConfirmFailure(reason: string): string {
   return describeReason(CONFIRM_MESSAGES, reason, "確認保留");
 }
 
-/** 建立與確認保留共用：輸入有誤是 422，其餘業務拒絕（名額、時間、冪等鍵衝突、保留過期或不存在）是 409。 */
+/** 建立與確認保留共用：輸入有誤是 422，其餘業務拒絕一律是 409。 */
 export function holdFailureStatus(reason: string): 409 | 422 {
   return reason === "invalid_input" ? 422 : 409;
 }
