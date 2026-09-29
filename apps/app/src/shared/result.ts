@@ -8,3 +8,16 @@ export const ok = <T>(data: T): { ok: true; data: T } => ({ ok: true, data });
 export const fail = <Reason extends string>(
   reason: Reason,
 ): { ok: false; reason: Reason } => ({ ok: false, reason });
+
+/** 輸入驗證失敗：`fields` 是欄位名稱到（可直接顯示的）錯誤訊息，整體層級的錯誤放在 `_form`。 */
+export interface InvalidInput {
+  ok: false;
+  reason: "invalid_input";
+  fields: Record<string, string[]>;
+}
+
+export const invalidInput = (fields: Record<string, string[]>): InvalidInput => ({
+  ok: false,
+  reason: "invalid_input",
+  fields,
+});

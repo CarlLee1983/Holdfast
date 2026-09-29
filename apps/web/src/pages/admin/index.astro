@@ -1,0 +1,66 @@
+---
+import { env } from "cloudflare:workers";
+import { readAccessJwt } from "../../admin/access-jwt";
+import { resourceFormToInput } from "../../admin/forms";
+import { describeFailure, type Failure } from "../../admin/reasons";
+import ResourceForm from "../../components/ResourceForm.astro";
+import AdminLayout from "../../layouts/AdminLayout.astro";
+
+export const prerender = false;
+
+// 授權完全由 App Worker 驗 JWT 決定；這裡只轉交 header，收到 unauthorized 就顯示 403
+const jwt = readAccessJwt(Astro.request, env);
+let failure: Failure | undefined;
+let submitted: Record<string, string> = {};
+let unauthorized = false;
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  submitted = Object.fromEntries([...form].filter(([, v]) => typeof v === "string")) as Record<string, string>;
+  const result = await env.APP.createResource(jwt, resourceFormToInput(form));
+  if (result.ok) {
+    return Astro.redirect(`/admin/resources/${result.data.id}?saved=created`, 303);
+  }
+  if (result.reason === "unauthorized") unauthorized = true;
+  else failure = describeFailure(result);
+}
+
+const resources = unauthorized ? null : await env.APP.listResourcesForAdmin(jwt);
+if (unauthorized || (resources && !resources.ok && resources.reason === "unauthorized")) {
+  Astro.response.status = 403;
+}
+---
+
+<AdminLayout title="資源">
+  {
+    Astro.response.status === 403 ? (
+      <p class="error" role="alert">沒有權限：請確認已通過 Cloudflare Access 登入。</p>
+    ) : (
+      <>
+        {resources?.ok && resources.data.length === 0 && <p>目前沒有資源。</p>}
+        {
+          resources?.ok && resources.data.length > 0 && (
+            <table>
+              <thead>
+                <tr><th>名稱</th><th>保留期限（秒）</th><th>單筆名額上限</th><th>取消截止（秒）</th><th></th></tr>
+              </thead>
+              <tbody>
+                {resources.data.map((r) => (
+                  <tr>
+                    <td>{r.name}</td>
+                    <td>{r.holdTtlSeconds}</td>
+                    <td>{r.seatsPerHold}</td>
+                    <td>{r.cancellationCutoffSeconds}</td>
+                    <td><a href={`/admin/resources/${r.id}`}>編輯・時段</a></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )
+        }
+        <h2>建立資源</h2>
+        <ResourceForm values={submitted} failure={failure} submitLabel="建立資源" />
+      </>
+    )
+  }
+</AdminLayout>

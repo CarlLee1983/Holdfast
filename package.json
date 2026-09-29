@@ -10,6 +10,7 @@
     "dev": "bun run --filter @holdfast/web dev",
     "db:migrate": "bun run --filter @holdfast/app db:migrate:local",
     "db:seed": "bun run --filter @holdfast/app db:seed:local",
+    "admin:dev-token": "bun run --filter @holdfast/app admin:dev-token",
     "preview": "bun run --filter @holdfast/web preview",
     "db:migrate:preview": "bun run --filter @holdfast/app db:migrate:preview",
     "deploy:app:preview": "bun run --filter @holdfast/app deploy:preview",

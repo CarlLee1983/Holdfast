@@ -1,0 +1,39 @@
+---
+import type { Failure } from "../admin/reasons";
+
+interface Props {
+  /** 修改時帶資源編號；建立時省略。 */
+  resourceId?: number;
+  values: { name?: string; holdTtlSeconds?: string | number; seatsPerHold?: string | number; cancellationCutoffSeconds?: string | number };
+  failure?: Failure | undefined;
+  submitLabel: string;
+}
+const { resourceId, values, failure, submitLabel } = Astro.props;
+const errors = failure?.fields ?? {};
+---
+
+<form method="post">
+  <input type="hidden" name="intent" value={resourceId === undefined ? "create-resource" : "update-resource"} />
+  {failure && <p class="error" role="alert">{failure.message}</p>}
+  <label>
+    名稱
+    <input name="name" value={values.name ?? ""} required />
+    {errors.name?.map((m) => <span class="error">{m}</span>)}
+  </label>
+  <label>
+    保留期限（秒）{resourceId === undefined && "，留空為 600"}
+    <input name="holdTtlSeconds" inputmode="numeric" value={values.holdTtlSeconds ?? ""} required={resourceId !== undefined} />
+    {errors.holdTtlSeconds?.map((m) => <span class="error">{m}</span>)}
+  </label>
+  <label>
+    單筆名額上限
+    <input name="seatsPerHold" inputmode="numeric" value={values.seatsPerHold ?? ""} required />
+    {errors.seatsPerHold?.map((m) => <span class="error">{m}</span>)}
+  </label>
+  <label>
+    取消截止時間（開始前幾秒）
+    <input name="cancellationCutoffSeconds" inputmode="numeric" value={values.cancellationCutoffSeconds ?? ""} required />
+    {errors.cancellationCutoffSeconds?.map((m) => <span class="error">{m}</span>)}
+  </label>
+  <p><button type="submit">{submitLabel}</button></p>
+</form>

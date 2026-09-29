@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "typecheck": "wrangler types -c wrangler.jsonc -c ../app/wrangler.jsonc && astro check",
+    "typecheck": "wrangler types --strict-vars=false -c wrangler.jsonc -c ../app/wrangler.jsonc && astro check",
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro build && wrangler dev -c dist/server/wrangler.json -c ../app/wrangler.jsonc --persist-to ../../.wrangler/state",

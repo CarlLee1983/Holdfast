@@ -6,6 +6,7 @@ const DEFAULT_CANCELLATION_CUTOFF_SECONDS = 3600;
 /** 每個測試前清空資料表（外鍵順序：先 slots 後 resources）。 */
 export async function resetDb(): Promise<void> {
   await env.DB.batch([
+    env.DB.prepare("DELETE FROM admin_audit"),
     env.DB.prepare("DELETE FROM slots"),
     env.DB.prepare("DELETE FROM resources"),
   ]);
@@ -51,4 +52,25 @@ export async function insertSlot(
     .bind(resourceId, startsAt, endsAt, capacity)
     .first<{ id: number }>();
   return result!.id;
+}
+
+export async function countRows(table: "resources" | "slots" | "admin_audit"): Promise<number> {
+  const row = await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${table}`).first<{ n: number }>();
+  return row!.n;
+}
+
+export interface AuditRow {
+  actor_email: string;
+  action: string;
+  target_type: string;
+  target_id: number;
+  at: number;
+  detail: string;
+}
+
+export async function auditRows(): Promise<AuditRow[]> {
+  const { results } = await env.DB.prepare(
+    "SELECT actor_email, action, target_type, target_id, at, detail FROM admin_audit ORDER BY id",
+  ).all<AuditRow>();
+  return results;
 }

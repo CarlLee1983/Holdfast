@@ -1,0 +1,108 @@
+---
+import { env } from "cloudflare:workers";
+import { readAccessJwt } from "../../../admin/access-jwt";
+import { resourceFormToInput, slotFormToInput } from "../../../admin/forms";
+import { describeFailure, type Failure } from "../../../admin/reasons";
+import { formatTaipeiDate, formatTaipeiTime } from "../../../catalog/taipei-time";
+import ResourceForm from "../../../components/ResourceForm.astro";
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+
+export const prerender = false;
+
+const jwt = readAccessJwt(Astro.request, env);
+const resourceId = Number(Astro.params.id);
+
+let resourceFailure: Failure | undefined;
+let slotFailure: Failure | undefined;
+let submitted: Record<string, string> = {};
+let notice = "";
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  submitted = Object.fromEntries([...form].filter(([, v]) => typeof v === "string")) as Record<string, string>;
+  const intent = form.get("intent");
+
+  if (intent === "update-resource") {
+    const result = await env.APP.updateResource(jwt, resourceFormToInput(form, resourceId));
+    if (result.ok) return Astro.redirect(`/admin/resources/${resourceId}?saved=updated`, 303);
+    if (result.reason !== "unauthorized") resourceFailure = describeFailure(result);
+  } else if (intent === "create-slot") {
+    const result = await env.APP.createSlot(jwt, slotFormToInput(form, resourceId));
+    if (result.ok) return Astro.redirect(`/admin/resources/${resourceId}?saved=slot`, 303);
+    if (result.reason !== "unauthorized") slotFailure = describeFailure(result);
+  }
+}
+
+const saved = Astro.url.searchParams.get("saved");
+if (saved === "updated") notice = "資源已更新";
+if (saved === "slot") notice = "時段已建立";
+
+const list = await env.APP.listResourcesForAdmin(jwt);
+const unauthorized = !list.ok && list.reason === "unauthorized";
+const resource = list.ok ? list.data.find((r) => r.id === resourceId) : undefined;
+const slots = resource ? await env.APP.listSlots(resourceId) : undefined;
+
+if (unauthorized) Astro.response.status = 403;
+else if (!resource) Astro.response.status = 404;
+
+const resourceValues = resourceFailure && submitted.intent === "update-resource" ? submitted : resource;
+const slotValues = slotFailure ? submitted : {};
+const slotErrors = slotFailure?.fields ?? {};
+---
+
+<AdminLayout title={resource ? resource.name : "資源"}>
+  {
+    unauthorized ? (
+      <p class="error" role="alert">沒有權限：請確認已通過 Cloudflare Access 登入。</p>
+    ) : !resource ? (
+      <p class="error" role="alert">找不到這個資源。</p>
+    ) : (
+      <>
+        {notice && <p class="notice" role="status">{notice}</p>}
+        <h2>修改資源</h2>
+        <ResourceForm resourceId={resourceId} values={resourceValues ?? {}} failure={resourceFailure} submitLabel="儲存" />
+        <p>修改保留期限只影響之後建立的保留。</p>
+
+        <h2>時段（台北時間）</h2>
+        {slots?.ok && slots.data.length === 0 && <p>目前沒有尚未結束的時段。</p>}
+        {
+          slots?.ok && slots.data.length > 0 && (
+            <table>
+              <thead><tr><th>日期</th><th>時間</th><th>容量</th></tr></thead>
+              <tbody>
+                {slots.data.map((s) => (
+                  <tr>
+                    <td>{formatTaipeiDate(s.startsAt)}</td>
+                    <td>{formatTaipeiTime(s.startsAt)}–{formatTaipeiTime(s.endsAt)}</td>
+                    <td>{s.capacity}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )
+        }
+        <h3>建立時段</h3>
+        <form method="post">
+          <input type="hidden" name="intent" value="create-slot" />
+          {slotFailure && <p class="error" role="alert">{slotFailure.message}</p>}
+          <label>
+            開始（台北時間）
+            <input type="datetime-local" name="startsAt" value={slotValues.startsAt ?? ""} required />
+            {slotErrors.startsAt?.map((m) => <span class="error">{m}</span>)}
+          </label>
+          <label>
+            結束（台北時間）
+            <input type="datetime-local" name="endsAt" value={slotValues.endsAt ?? ""} required />
+            {slotErrors.endsAt?.map((m) => <span class="error">{m}</span>)}
+          </label>
+          <label>
+            容量
+            <input name="capacity" inputmode="numeric" value={slotValues.capacity ?? ""} required />
+            {slotErrors.capacity?.map((m) => <span class="error">{m}</span>)}
+          </label>
+          <p><button type="submit">建立時段</button></p>
+        </form>
+      </>
+    )
+  }
+</AdminLayout>

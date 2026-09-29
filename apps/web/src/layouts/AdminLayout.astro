@@ -1,0 +1,29 @@
+---
+interface Props {
+  title: string;
+}
+const { title } = Astro.props;
+---
+
+<!doctype html>
+<html lang="zh-Hant-TW">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>{title}｜Holdfast 管理後台</title>
+    <style>
+      body { font-family: system-ui, sans-serif; max-width: 48rem; margin: 2rem auto; padding: 0 1rem; }
+      label { display: block; margin-top: 0.75rem; }
+      .error { color: #b00020; }
+      .notice { color: #1b5e20; }
+      table { border-collapse: collapse; }
+      th, td { padding: 0.25rem 0.75rem; border-bottom: 1px solid #ddd; text-align: left; }
+    </style>
+  </head>
+  <body>
+    <nav><a href="/admin">管理後台</a> ・ <a href="/">公開頁面</a></nav>
+    <h1>{title}</h1>
+    <slot />
+  </body>
+</html>

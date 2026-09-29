@@ -6,6 +6,14 @@
   // 只給 Web Worker 經 Service Binding 呼叫，不對外公開（無 workers.dev、無 routes）
   "workers_dev": false,
   "observability": { "enabled": true },
+  // Cloudflare Access 驗簽設定（ADR 0007），純文字變數、不是 secret。vars 不會被 env 繼承，各環境自己宣告。
+  // 空字串 = 尚未設定，管理 RPC 一律 fail closed（unauthorized）。
+  // 頂層只給本機開發與測試：本機值由 `bun run admin:dev-token` 寫進 .dev.vars，測試由 vitest.config.ts 注入。
+  // ACCESS_JWKS_JSON（內嵌 JWKS）只允許出現在本機 .dev.vars，preview / production 不得定義。
+  "vars": {
+    "ACCESS_TEAM_DOMAIN": "",
+    "ACCESS_AUD": ""
+  },
   "d1_databases": [
     {
       "binding": "DB",
@@ -18,6 +26,12 @@
   "env": {
     "preview": {
       "workers_dev": false,
+      // 待辦：建立 Access application 後填入。TEAM_DOMAIN 例如 "<team>.cloudflareaccess.com"，
+      // AUD 是該 application 的 Application Audience (AUD) Tag。留空時管理 RPC 全部拒絕。
+      "vars": {
+        "ACCESS_TEAM_DOMAIN": "",
+        "ACCESS_AUD": ""
+      },
       "d1_databases": [
         {
           "binding": "DB",
@@ -29,6 +43,12 @@
     },
     "production": {
       "workers_dev": false,
+      // 待辦：建立 Access application 後填入。TEAM_DOMAIN 例如 "<team>.cloudflareaccess.com"，
+      // AUD 是該 application 的 Application Audience (AUD) Tag。留空時管理 RPC 全部拒絕。
+      "vars": {
+        "ACCESS_TEAM_DOMAIN": "",
+        "ACCESS_AUD": ""
+      },
       "d1_databases": [
         {
           "binding": "DB",
