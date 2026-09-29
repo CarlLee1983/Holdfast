@@ -45,6 +45,7 @@ bun run dev            # astro dev，App Worker 以 auxiliaryWorkers 一併啟�
 bun run preview        # astro build 後以 wrangler dev 同時跑兩個 Worker（-c web -c app），較接近部署形態
 ```
 
+- 會員登入需要 secrets，缺少時會員登入不可用（見「會員登入」）；本機先 `cp apps/app/.dev.vars.example apps/app/.dev.vars` 並填值（見「會員登入」）。
 - 本機 D1 狀態放在 repo 根目錄的 `.wrangler/state`，`dev`、`preview` 與 `db:*` 共用；首次啟動前先 `db:migrate` 再 `db:seed`。
 - 改 schema：編輯 `apps/app/src/**/schema.ts`，在 `apps/app` 執行 `bun run db:generate` 產生 migration。
 - 時間一律以 UTC epoch 毫秒儲存與傳遞，只有 Web Worker 顯示時換成 Asia/Taipei。
@@ -62,6 +63,37 @@ Web Worker 只把請求裡的 `Cf-Access-Jwt-Assertion` 原樣轉交給 App Work
 **每個環境的設定**：在 Zero Trust 建立保護 `/admin` 的 Access application 之後，把團隊網域與該 application 的 AUD tag 填進 `apps/app/wrangler.jsonc` 的 `env.preview.vars` 與 `env.production.vars`（`ACCESS_TEAM_DOMAIN`、`ACCESS_AUD`，純文字變數、不是 secret）。`ACCESS_TEAM_DOMAIN` 只接受 `<team>.cloudflareaccess.com`（或本機專用的 `local.invalid`），其他值一律拒絕。目前兩個環境都指向 team `photon-site-pages.cloudflareaccess.com` 與同一個 application 的 AUD（共用的取捨見 ADR 0007）。`ACCESS_JWKS_JSON` 只在團隊網域是 `local.invalid` 時採用（與真實網域並存視為設定錯誤，同樣拒絕）；`ACCESS_DEV_JWT` 只在開發模式（`import.meta.env.DEV`）讀取。兩者都只用於本機，preview / production 不得定義。
 
 **本機開發**：沒有 Access 時，先 `bun run admin:dev-token`（可帶 email 參數）。它會產生一組測試金鑰，私鑰只寫到 `.wrangler/admin-dev/`，公鑰 JWKS 與 Access 設定（團隊網域 `local.invalid`）寫進 `apps/app/.dev.vars`，簽好的 JWT（效期 7 天） 寫進 `apps/web/.dev.vars`（`ACCESS_DEV_JWT`，只在請求沒有 Access header 時使用）；這些檔案都已 gitignore。重啟開發伺服器後開 `/admin`。
+
+## 會員登入
+
+會員用 LINE 或 Google 登入，不設密碼；Better Auth 放在 App Worker、以 Drizzle 存進 D1（[ADR 0008](docs/adr/0008-better-auth-in-app-worker.md)、[ADR 0009](docs/adr/0009-member-is-an-account.md)）。
+Web Worker 的 middleware 把 `/api/auth/*` 原封（`redirect: "manual"`）經 Service Binding 轉給 App Worker，並以 RPC `getMemberSession(cookie)` 取得會員放進 `Astro.locals.member`（`null` = 未登入）。登入頁是 `/login?next=<站內路徑>`，登出是 `POST /api/auth/sign-out`。
+Session 壽命用 Better Auth 預設值（7 天，逾 1 天的請求會延長）。延長時 Better Auth 產生的 Set-Cookie 隨 `getMemberSession` 的結果（`{ member, setCookies }`）一起回傳，由 middleware 附加到頁面回應，所以瀏覽器 cookie 與 D1 裡的 session 同步延長。沒有 Better Auth session cookie 的請求不會呼叫 RPC；RPC 失敗時 middleware 記一行 `member_session_lookup_failed` 並當作未登入，公開頁面不受影響。
+
+- 兩種登入方式是各自獨立的會員，不以 email 自動合併（`accountLinking` 關閉；[ADR 0009](docs/adr/0009-member-is-an-account.md)）。
+- LINE 會員的 email 一律是 `line-<sub>@members.holdfast.invalid`，不存 LINE 回傳的 email（[ADR 0008](docs/adr/0008-better-auth-in-app-worker.md)）；LINE 回傳的身分沒有 `sub` 時拒絕登入。Google 會員存 Google 已驗證的 email。
+- OAuth token 以 AES-256-GCM 加密後才存進 D1（`account.encryptOAuthTokens`）。
+- 限流開啟，計數存在 D1 的 `rate_limit`；來源 IP 只認 `cf-connecting-ip`。Web 的 middleware 轉發 `/api/auth/*` 時移除 `X-Forwarded-*`，並帶上自己收到的 `cf-connecting-ip`。
+- `/api/auth/` 前綴與 cookie 前綴定義在 `apps/app/src/auth/paths.ts`，App（Better Auth 的 `basePath`、`advanced.cookiePrefix`）與 Web（`apps/web/src/auth/member.ts`）共用。
+- `bun run auth:generate`（在 `apps/app`）依 `auth.cli.ts` 重新產生 `src/auth/schema.ts`，再 `bun run db:generate` 產生 migration；`auth.cli.ts` 只給 CLI 用，設定由 `createAuth` 以 placeholder 值產生，沒有第二份 Better Auth 設定要維護。
+- 需要 `nodejs_compat`（Better Auth 用 AsyncLocalStorage 與 `node:crypto`），已寫在 `apps/app/wrangler.jsonc`。
+
+**環境設定，缺少或無效時會員登入不可用**（auth 請求回 503、log 一行 `auth_config_invalid` 列出變數名稱，不含值，Web 顯示「登入暫時無法使用」；catalog 與管理 RPC 不受影響，理由見 [ADR 0008](docs/adr/0008-better-auth-in-app-worker.md)）：
+
+| 名稱 | 種類 | 說明 |
+| --- | --- | --- |
+| `BETTER_AUTH_URL` | `wrangler.jsonc` 的 `vars` | 瀏覽器看到的 Web Worker 公開 origin，不含結尾斜線；OAuth 的 redirect_uri 由它組成。頂層是 `http://localhost:4321`，preview 為 `https://holdfast-preview.gravito.dev`、production 為 `https://holdfast.gravito.dev` |
+| `BETTER_AUTH_SECRET` | secret | 至少 32 字元 |
+| `GOOGLE_CLIENT_ID`、`GOOGLE_CLIENT_SECRET` | secret | Google Cloud Console 的 OAuth client |
+| `LINE_CHANNEL_ID`、`LINE_CHANNEL_SECRET` | secret | LINE Developers 的 LINE Login channel（Channel ID、Channel secret）；要取得 email 需另外申請權限，但我們不儲存它 |
+
+**每個環境部署前要做的事**：
+
+1. 在 Google 與 LINE 後台登記 callback：`<BETTER_AUTH_URL>/api/auth/callback/google` 與 `<BETTER_AUTH_URL>/api/auth/callback/line`（本機也要登記 `http://localhost:4321/...`，埠被占用時 astro 會換埠，callback 就對不上）。
+2. 確認 `apps/app/wrangler.jsonc` 該環境的 `BETTER_AUTH_URL` 是 Web 的自訂網域（新環境要先填）。
+3. 設定 secrets：`cd apps/app && bunx wrangler secret put BETTER_AUTH_SECRET --env <env>`，其餘四個同理。Google OAuth client 與 LINE channel 在 preview 與 production **共用同一組**，兩個環境的 callback 都要登記在同一個 client / channel；只有 `BETTER_AUTH_SECRET` 每個環境各自產生、值不同。部署工作流程會在 migration 之前檢查（見「部署」）。
+
+**本機開發**：複製 `apps/app/.dev.vars.example` 為 `apps/app/.dev.vars`（已 gitignore，與 `admin:dev-token` 寫入的鍵並存）並填值。測試不需要它，`apps/app/vitest.config.ts` 會注入假值。
 
 ## 部署
 
@@ -82,7 +114,14 @@ Web Worker 只把請求裡的 `Cf-Access-Jwt-Assertion` 原樣轉交給 App Work
 | push 到 main | `.github/workflows/deploy.yml` | 部署 production |
 | 手動 `workflow_dispatch`（任何分支） | `.github/workflows/deploy.yml` | 部署 preview |
 
-部署工作流程的順序固定：檢查 secrets → `typecheck` / `test` → 套用 D1 migration → 部署 App → 建置並部署 Web。同一環境的部署排隊執行，不取消進行中的部署。
+部署工作流程的順序固定：檢查 secrets → 檢查會員登入設定 → `typecheck` / `test` → 套用 D1 migration → 部署 App → 建置並部署 Web。同一環境的部署排隊執行，不取消進行中的部署。
+
+會員登入設定檢查（`apps/app/scripts/check-auth-deploy.ts`）在 migration 之前執行，任一項不符就中止並指出是哪一項：
+
+- 該環境在 `apps/app/wrangler.jsonc` 的 `BETTER_AUTH_URL` 必須等於該環境 Web 的自訂網域（上表：preview 為 `https://holdfast-preview.gravito.dev`、production 為 `https://holdfast.gravito.dev`，不可有結尾斜線）。
+- `wrangler secret list --env <env> --format json` 必須列出「會員登入」表中的所有 secret。secret 的值是 write-only，只能檢查名稱存在，值正不正確檢查不到；輸出格式不符預期（以 zod 驗證）也會中止。
+
+新環境要先填好 `BETTER_AUTH_URL` 並設定 secrets 才能第一次部署；`wrangler secret list` 需要 Worker 已存在，全新環境若無法列出，也會中止並提示（先用 `wrangler secret put` 建立）。
 
 需要的 GitHub secrets（Settings > Secrets and variables > Actions）；缺少任一個，工作流程在第一步就會失敗並指出缺哪個：
 

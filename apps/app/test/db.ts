@@ -3,9 +3,14 @@ import { env } from "cloudflare:workers";
 const DEFAULT_SEATS_PER_HOLD = 4;
 const DEFAULT_CANCELLATION_CUTOFF_SECONDS = 3600;
 
-/** 每個測試前清空資料表（外鍵順序：先 slots 後 resources）。 */
+/** 每個測試前清空資料表（外鍵順序：先 slots 後 resources；session、account 先於 user）。 */
 export async function resetDb(): Promise<void> {
   await env.DB.batch([
+    env.DB.prepare("DELETE FROM session"),
+    env.DB.prepare("DELETE FROM account"),
+    env.DB.prepare("DELETE FROM verification"),
+    env.DB.prepare("DELETE FROM rate_limit"),
+    env.DB.prepare('DELETE FROM "user"'),
     env.DB.prepare("DELETE FROM admin_audit"),
     env.DB.prepare("DELETE FROM slots"),
     env.DB.prepare("DELETE FROM resources"),

@@ -3,6 +3,8 @@
   "name": "holdfast-app",
   "main": "src/entrypoint.ts",
   "compatibility_date": "2026-08-01",
+  // Better Auth 需要 AsyncLocalStorage 與 node:crypto
+  "compatibility_flags": ["nodejs_compat"],
   // 只給 Web Worker 經 Service Binding 呼叫，不對外公開（無 workers.dev、無 routes）
   "workers_dev": false,
   "observability": { "enabled": true },
@@ -10,9 +12,13 @@
   // 空字串 = 尚未設定，管理 RPC 一律 fail closed（unauthorized）。
   // 頂層只給本機開發與測試：本機值由 `bun run admin:dev-token` 寫進 .dev.vars，測試由 vitest.config.ts 注入。
   // ACCESS_JWKS_JSON（內嵌 JWKS）只允許出現在本機 .dev.vars，preview / production 不得定義。
+  //
+  // BETTER_AUTH_URL 是瀏覽器看到的 Web Worker 公開 origin（OAuth redirect_uri 由它組成），同樣純文字、各環境自己宣告。
+  // 會員登入的 secrets（BETTER_AUTH_SECRET、GOOGLE_*、LINE_*）不寫在這裡，見 README「會員登入」。
   "vars": {
     "ACCESS_TEAM_DOMAIN": "",
-    "ACCESS_AUD": ""
+    "ACCESS_AUD": "",
+    "BETTER_AUTH_URL": "http://localhost:4321"
   },
   "d1_databases": [
     {
@@ -27,9 +33,11 @@
     "preview": {
       "workers_dev": false,
       // Access application「holdfast-admin」同時保護兩個環境的 /admin，兩環境共用同一個 AUD（ADR 0007）
+      // BETTER_AUTH_URL 是該環境 Web 的公開 origin（OAuth callback 由它組成，須在 Google 與 LINE 後台登記 /api/auth/callback/{google,line}）
       "vars": {
         "ACCESS_TEAM_DOMAIN": "photon-site-pages.cloudflareaccess.com",
-        "ACCESS_AUD": "ab3b33e00636c3b35fa7162c81bc860727483e1fb95dc925503981e2740c4914"
+        "ACCESS_AUD": "ab3b33e00636c3b35fa7162c81bc860727483e1fb95dc925503981e2740c4914",
+        "BETTER_AUTH_URL": "https://holdfast-preview.gravito.dev"
       },
       "d1_databases": [
         {
@@ -43,9 +51,11 @@
     "production": {
       "workers_dev": false,
       // Access application「holdfast-admin」同時保護兩個環境的 /admin，兩環境共用同一個 AUD（ADR 0007）
+      // BETTER_AUTH_URL 是該環境 Web 的公開 origin（OAuth callback 由它組成，須在 Google 與 LINE 後台登記 /api/auth/callback/{google,line}）
       "vars": {
         "ACCESS_TEAM_DOMAIN": "photon-site-pages.cloudflareaccess.com",
-        "ACCESS_AUD": "ab3b33e00636c3b35fa7162c81bc860727483e1fb95dc925503981e2740c4914"
+        "ACCESS_AUD": "ab3b33e00636c3b35fa7162c81bc860727483e1fb95dc925503981e2740c4914",
+        "BETTER_AUTH_URL": "https://holdfast.gravito.dev"
       },
       "d1_databases": [
         {

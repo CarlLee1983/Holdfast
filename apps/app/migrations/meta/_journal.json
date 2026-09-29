@@ -15,6 +15,13 @@
       "when": 1790654258190,
       "tag": "0001_tough_colossus",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790662464545,
+      "tag": "0002_dry_puma",
+      "breakpoints": true
     }
   ]
 }
