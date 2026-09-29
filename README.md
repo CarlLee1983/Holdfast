@@ -39,6 +39,7 @@ e2e        Playwright：以建置產物跑兩個 Worker，瀏覽器走過會員�
 bun install
 bun run typecheck      # 兩個 Worker 的型別檢查（先跑 wrangler types）
 bun run test           # Vitest + @cloudflare/vitest-pool-workers，真的本機 D1，經 RPC 呼叫
+bun run test:coverage  # 同 test，另以 istanbul 量覆蓋率，任一指標低於 80% 即失敗（CI 跑這個）
 bun run db:migrate     # 把 apps/app/migrations 套到本機 D1
 bun run db:seed        # 寫入 2 個資源與數個時段（可重複執行，會先清空）
 bun run admin:dev-token # 產生本機 /admin 用的測試金鑰與 JWT（見「管理後台」）

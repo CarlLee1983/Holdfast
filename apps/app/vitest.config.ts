@@ -34,5 +34,14 @@ export default defineConfig({
   ],
   test: {
     setupFiles: ["./test/apply-migrations.ts"],
+    coverage: {
+      // workers pool 不支援 V8 coverage，必須用 istanbul（developers.cloudflare.com/workers/testing/vitest-integration/known-issues/）
+      provider: "istanbul",
+      reporter: ["text-summary", "text", "json-summary", "lcov"],
+      // #1 Testing Decisions：覆蓋率 80% 以上，低於門檻時 CI 失敗
+      thresholds: { statements: 80, branches: 80, functions: 80, lines: 80 },
+      include: ["src/**/*.ts"],
+      exclude: ["src/**/*.d.ts"],
+    },
   },
 });
