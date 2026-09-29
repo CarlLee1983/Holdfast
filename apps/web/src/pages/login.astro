@@ -1,4 +1,5 @@
 ---
+import MemberLayout from "../layouts/MemberLayout.astro";
 import { safeNextPath } from "../auth/member";
 
 export const prerender = false;
@@ -9,37 +10,43 @@ if (Astro.locals.member) {
 }
 ---
 
-<!doctype html>
-<html lang="zh-Hant-TW">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="robots" content="noindex" />
-    <title>登入｜Holdfast 訂位</title>
-  </head>
-  <body>
-    <h1>登入</h1>
-    <p>用 LINE 或 Google 登入。兩種方式是各自獨立的會員，不會合併。</p>
-    <p id="error" role="alert" hidden></p>
+<MemberLayout title="登入" noindex>
+  <h1>登入</h1>
+  <p>用 LINE 或 Google 登入。兩種方式是各自獨立的會員，不會合併。</p>
+  <p id="error" role="alert" hidden></p>
+  <div class="providers">
     <button type="button" data-provider="line" data-next={next}>用 LINE 登入</button>
-    <button type="button" data-provider="google" data-next={next}>用 Google 登入</button>
-    <script>
-      import { requestSocialLogin } from "../auth/client";
+    <button type="button" class="secondary" data-provider="google" data-next={next}>用 Google 登入</button>
+  </div>
+  <script>
+    import { requestSocialLogin } from "../auth/client";
 
-      // 發起登入：POST 到 Better Auth，拿到 provider 的授權網址後導向；state cookie 由回應的 Set-Cookie 設定。
-      // 任何失敗（含網路錯誤與 5xx）都顯示同一則訊息
-      for (const button of document.querySelectorAll<HTMLButtonElement>("button[data-provider]")) {
-        button.addEventListener("click", async () => {
-          const url = await requestSocialLogin(fetch, button.dataset.provider ?? "", button.dataset.next ?? "/");
-          if (url) {
-            location.href = url;
-            return;
-          }
-          const error = document.querySelector<HTMLElement>("#error")!;
-          error.textContent = "登入暫時無法使用，請稍後再試。";
-          error.hidden = false;
-        });
-      }
-    </script>
-  </body>
-</html>
+    // 發起登入：POST 到 Better Auth，拿到 provider 的授權網址後導向；state cookie 由回應的 Set-Cookie 設定。
+    // 任何失敗（含網路錯誤與 5xx）都顯示同一則訊息
+    for (const button of document.querySelectorAll<HTMLButtonElement>("button[data-provider]")) {
+      button.addEventListener("click", async () => {
+        const url = await requestSocialLogin(fetch, button.dataset.provider ?? "", button.dataset.next ?? "/");
+        if (url) {
+          location.href = url;
+          return;
+        }
+        const error = document.querySelector<HTMLElement>("#error")!;
+        error.textContent = "登入暫時無法使用，請稍後再試。";
+        error.hidden = false;
+      });
+    }
+  </script>
+</MemberLayout>
+
+<style>
+  .providers {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    max-width: 20rem;
+    margin-top: var(--space-6);
+  }
+  .providers button {
+    min-height: var(--control-height-lg);
+  }
+</style>

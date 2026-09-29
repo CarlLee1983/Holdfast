@@ -1,0 +1,12 @@
+---
+import MemberLayout from "../layouts/MemberLayout.astro";
+
+// Astro 會傳入 error prop，這裡刻意不使用：不向會員顯示任何錯誤細節或堆疊
+export const prerender = false;
+---
+
+<MemberLayout title="發生錯誤" noindex>
+  <h1>發生了一點問題</h1>
+  <p>服務暫時無法使用，請稍後再試。</p>
+  <p><a href="/">回首頁</a></p>
+</MemberLayout>

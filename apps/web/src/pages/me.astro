@@ -1,4 +1,5 @@
 ---
+import MemberLayout from "../layouts/MemberLayout.astro";
 import { env } from "cloudflare:workers";
 import { loginUrl } from "../auth/member";
 import { CANCEL_INTENT } from "../holds/cancel";
@@ -40,106 +41,98 @@ const notice = heldNotice(holds, Astro.url.searchParams.get("held"));
 const formatDateTime = (epochMs: number) => `${formatTaipeiDate(epochMs)} ${formatTaipeiTime(epochMs)}`;
 ---
 
-<!doctype html>
-<html lang="zh-Hant-TW">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>我的保留與訂位 | Holdfast 訂位</title>
-  </head>
-  <body>
-    <h1>我的保留與訂位</h1>
-    <h2>我的保留</h2>
-    <p><a href="/">回到時段列表</a>　時間皆為台北時間。</p>
-    {formError && <p role="alert">{formError}</p>}
-    {confirmedId !== null && bookings.some((b) => String(b.id) === confirmedId && b.status === "confirmed") && <p role="status">訂位成功</p>}
-    {cancelledId !== null && /^\d+$/.test(cancelledId) && <p role="status">已取消訂位</p>}
-    {notice?.kind === "held" && <p role="status">保留成功，請於 {formatDateTime(notice.hold.expiresAt)} 前確認</p>}
-    {notice?.kind === "missing" && <p role="status">此保留已過期或不存在</p>}
-    {
-      holds.length === 0 ? (
-        <p>目前沒有有效的保留</p>
-      ) : (
-        <table>
-          <thead>
+<MemberLayout title="我的保留與訂位">
+  <h1>我的保留與訂位</h1>
+  <h2>我的保留</h2>
+  <p><a href="/">回到時段列表</a>　時間皆為台北時間。</p>
+  {formError && <p role="alert">{formError}</p>}
+  {confirmedId !== null && bookings.some((b) => String(b.id) === confirmedId && b.status === "confirmed") && <p role="status">訂位成功</p>}
+  {cancelledId !== null && /^\d+$/.test(cancelledId) && <p role="status">已取消訂位</p>}
+  {notice?.kind === "held" && <p role="status">保留成功，請於 {formatDateTime(notice.hold.expiresAt)} 前確認</p>}
+  {notice?.kind === "missing" && <p role="status">此保留已過期或不存在</p>}
+  {
+    holds.length === 0 ? (
+      <p>目前沒有有效的保留</p>
+    ) : (
+      <table>
+        <thead>
+          <tr>
+            <th>資源</th>
+            <th>日期</th>
+            <th>時間</th>
+            <th>名額</th>
+            <th>到期時間</th>
+            <th>確認</th>
+          </tr>
+        </thead>
+        <tbody>
+          {holds.map((hold) => (
             <tr>
-              <th>資源</th>
-              <th>日期</th>
-              <th>時間</th>
-              <th>名額</th>
-              <th>到期時間</th>
-              <th>確認</th>
+              <td>{hold.resourceName}</td>
+              <td>{formatTaipeiDate(hold.startsAt)}</td>
+              <td>
+                {formatTaipeiTime(hold.startsAt)}–{formatTaipeiTime(hold.endsAt)}
+              </td>
+              <td>{hold.seats}</td>
+              <td>{formatDateTime(hold.expiresAt)}</td>
+              <td>
+                <form method="post">
+                  <input type="hidden" name="intent" value={CONFIRM_INTENT} />
+                  <input type="hidden" name="holdId" value={hold.id} />
+                  <button type="submit">確認訂位</button>
+                </form>
+              </td>
             </tr>
-          </thead>
-          <tbody>
-            {holds.map((hold) => (
-              <tr>
-                <td>{hold.resourceName}</td>
-                <td>{formatTaipeiDate(hold.startsAt)}</td>
-                <td>
-                  {formatTaipeiTime(hold.startsAt)}–{formatTaipeiTime(hold.endsAt)}
-                </td>
-                <td>{hold.seats}</td>
-                <td>{formatDateTime(hold.expiresAt)}</td>
-                <td>
+          ))}
+        </tbody>
+      </table>
+    )
+  }
+  <h2>我的訂位</h2>
+  {
+    bookings.length === 0 ? (
+      <p>目前沒有訂位</p>
+    ) : (
+      <table>
+        <thead>
+          <tr>
+            <th>資源</th>
+            <th>日期</th>
+            <th>時間</th>
+            <th>名額</th>
+            <th>狀態</th>
+            <th>取消截止時間</th>
+            <th>取消</th>
+          </tr>
+        </thead>
+        <tbody>
+          {bookings.map((booking) => (
+            <tr>
+              <td>{booking.resourceName}</td>
+              <td>{formatTaipeiDate(booking.startsAt)}</td>
+              <td>
+                {formatTaipeiTime(booking.startsAt)}–{formatTaipeiTime(booking.endsAt)}
+              </td>
+              <td>{booking.seats}</td>
+              <td>{holdOrBookingStatus(booking)}</td>
+              <td>{formatDateTime(booking.cancellableUntil)}</td>
+              <td>
+                {booking.status !== "confirmed" ? null : now <= booking.cancellableUntil ? (
                   <form method="post">
-                    <input type="hidden" name="intent" value={CONFIRM_INTENT} />
-                    <input type="hidden" name="holdId" value={hold.id} />
-                    <button type="submit">確認訂位</button>
+                    <input type="hidden" name="intent" value={CANCEL_INTENT} />
+                    <input type="hidden" name="bookingId" value={booking.id} />
+                    <button type="submit">取消訂位</button>
                   </form>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )
-    }
-    <h2>我的訂位</h2>
-    {
-      bookings.length === 0 ? (
-        <p>目前沒有訂位</p>
-      ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>資源</th>
-              <th>日期</th>
-              <th>時間</th>
-              <th>名額</th>
-              <th>狀態</th>
-              <th>取消截止時間</th>
-              <th>取消</th>
+                ) : (
+                  "已過取消截止時間"
+                )}
+              </td>
             </tr>
-          </thead>
-          <tbody>
-            {bookings.map((booking) => (
-              <tr>
-                <td>{booking.resourceName}</td>
-                <td>{formatTaipeiDate(booking.startsAt)}</td>
-                <td>
-                  {formatTaipeiTime(booking.startsAt)}–{formatTaipeiTime(booking.endsAt)}
-                </td>
-                <td>{booking.seats}</td>
-                <td>{holdOrBookingStatus(booking)}</td>
-                <td>{formatDateTime(booking.cancellableUntil)}</td>
-                <td>
-                  {booking.status !== "confirmed" ? null : now <= booking.cancellableUntil ? (
-                    <form method="post">
-                      <input type="hidden" name="intent" value={CANCEL_INTENT} />
-                      <input type="hidden" name="bookingId" value={booking.id} />
-                      <button type="submit">取消訂位</button>
-                    </form>
-                  ) : (
-                    "已過取消截止時間"
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )
-    }
-    <h2>帳號</h2>
-    <p><a href="/account/delete">刪除我的帳號</a></p>
-  </body>
-</html>
+          ))}
+        </tbody>
+      </table>
+    )
+  }
+  <h2>帳號</h2>
+  <p><a href="/account/delete">刪除我的帳號</a></p>
+</MemberLayout>

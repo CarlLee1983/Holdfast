@@ -1,4 +1,5 @@
 ---
+import MemberLayout from "../layouts/MemberLayout.astro";
 import { env } from "cloudflare:workers";
 import { loadCatalog } from "../catalog/load-catalog";
 import { hasStarted } from "../catalog/slot-status";
@@ -22,94 +23,61 @@ const catalog = await loadCatalog(env.APP);
 const now = Date.now();
 ---
 
-<!doctype html>
-<html lang="zh-Hant-TW">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Holdfast 訂位</title>
-  </head>
-  <body>
-    <h1>Holdfast 訂位</h1>
-    {
-      member ? (
-        <p>
-          {member.name}，已登入。<a href="/me">我的保留</a>
-          <button type="button" id="sign-out">登出</button>
-          <span id="sign-out-error" role="alert" hidden></span>
-        </p>
-      ) : (
-        <p><a href="/login">登入</a></p>
-      )
-    }
-    {holdError && <p role="alert">{holdError}</p>}
-    <p>時間皆為台北時間。</p>
-    {catalog.length === 0 && <p>目前沒有資源。</p>}
-    {
-      catalog.map(({ resource, slots }) => (
-        <section>
-          <h2>{resource.name}</h2>
-          <p>單筆名額上限：{resource.seatsPerHold}</p>
-          {slots.length === 0 ? (
-            <p>目前沒有尚未結束的時段。</p>
-          ) : (
-            <table>
-              <thead>
+<MemberLayout title="時段列表">
+  <h1>Holdfast 訂位</h1>
+  {holdError && <p role="alert">{holdError}</p>}
+  <p>時間皆為台北時間。</p>
+  {catalog.length === 0 && <p>目前沒有資源。</p>}
+  {
+    catalog.map(({ resource, slots }) => (
+      <section>
+        <h2>{resource.name}</h2>
+        <p>單筆名額上限：{resource.seatsPerHold}</p>
+        {slots.length === 0 ? (
+          <p>目前沒有尚未結束的時段。</p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>日期</th>
+                <th>時間</th>
+                <th>剩餘名額</th>
+                <th>狀態</th>
+                <th>保留</th>
+              </tr>
+            </thead>
+            <tbody>
+              {slots.map((slot) => (
                 <tr>
-                  <th>日期</th>
-                  <th>時間</th>
-                  <th>剩餘名額</th>
-                  <th>狀態</th>
-                  <th>保留</th>
+                  <td>{formatTaipeiDate(slot.startsAt)}</td>
+                  <td>
+                    {formatTaipeiTime(slot.startsAt)}–{formatTaipeiTime(slot.endsAt)}
+                  </td>
+                  <td>
+                    {slot.remainingSeats} / {slot.capacity}
+                  </td>
+                  <td>{hasStarted(slot.startsAt, now) ? "已開始／不可預訂" : "尚未開始"}</td>
+                  <td>
+                    {hasStarted(slot.startsAt, now) ? null : member ? (
+                      <form method="post">
+                        <input type="hidden" name="slotId" value={slot.id} />
+                        <input type="hidden" name="idempotencyKey" value={crypto.randomUUID()} />
+                        <label>
+                          名額
+                          <input type="number" name="seats" min="1" max={resource.seatsPerHold} value="1" required />
+                        </label>
+                        <button type="submit">保留</button>
+                      </form>
+                    ) : (
+                      <a href={loginUrl(Astro.url)}>登入後保留</a>
+                    )}
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {slots.map((slot) => (
-                  <tr>
-                    <td>{formatTaipeiDate(slot.startsAt)}</td>
-                    <td>
-                      {formatTaipeiTime(slot.startsAt)}–{formatTaipeiTime(slot.endsAt)}
-                    </td>
-                    <td>
-                      {slot.remainingSeats} / {slot.capacity}
-                    </td>
-                    <td>{hasStarted(slot.startsAt, now) ? "已開始／不可預訂" : "尚未開始"}</td>
-                    <td>
-                      {hasStarted(slot.startsAt, now) ? null : member ? (
-                        <form method="post">
-                          <input type="hidden" name="slotId" value={slot.id} />
-                          <input type="hidden" name="idempotencyKey" value={crypto.randomUUID()} />
-                          <label>
-                            名額
-                            <input type="number" name="seats" min="1" max={resource.seatsPerHold} value="1" required />
-                          </label>
-                          <button type="submit">保留</button>
-                        </form>
-                      ) : (
-                        <a href={loginUrl(Astro.url)}>登入後保留</a>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </section>
-      ))
-    }
-    <script>
-      import { requestSignOut } from "../auth/client";
-
-      // 登出：Better Auth 的 sign-out 是 POST（需帶 Origin 與 cookie），回應會清掉 session cookie
-      document.querySelector("#sign-out")?.addEventListener("click", async () => {
-        if (await requestSignOut(fetch)) {
-          location.reload();
-          return;
-        }
-        const error = document.querySelector<HTMLElement>("#sign-out-error")!;
-        error.textContent = "登出失敗，請稍後再試。";
-        error.hidden = false;
-      });
-    </script>
-  </body>
-</html>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+    ))
+  }
+</MemberLayout>

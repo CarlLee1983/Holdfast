@@ -1,6 +1,6 @@
 /**
  * E2E 的受測伺服器（Playwright 的 webServer 啟動它）：
- * 重建 E2E 專用的狀態 → 建置 Web → 套用 migration 與 seed → 寫入測試會員的 session → 以 `wrangler dev` 跑兩個 Worker。
+ * 重建 E2E 專用的狀態 → 建置 Web → 套用 migration 與 seed → 寫入測試會員的 session（含一個專供登出測試的） → 以 `wrangler dev` 跑兩個 Worker。
  *
  * 不碰開發者的本機狀態：D1 放在 `.wrangler/e2e/state`；Web 建置到 `.wrangler/e2e/web`（不覆寫 `apps/web/dist`）；
  * 兩個 Worker 的設定檔旁都放 E2E 自己的 `.dev.vars`（wrangler 只讀設定檔旁的 `.dev.vars`，
@@ -11,7 +11,7 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { experimental_readRawConfig } from "wrangler";
-import { AUTH_SECRET, BASE_URL, MEMBER, PORT, SESSION } from "./constants";
+import { AUTH_SECRET, BASE_URL, MEMBER, PORT, SESSION, SIGN_OUT_SESSION } from "./constants";
 
 const ROOT = resolve(import.meta.dirname, "../..");
 const APP_DIR = join(ROOT, "apps/app");
@@ -70,8 +70,12 @@ function insertMemberSession(): void {
   const sql = `
     INSERT INTO "user" (id, name, email, email_verified, created_at, updated_at)
       VALUES ('${MEMBER.id}', '${MEMBER.name}', '${MEMBER.email}', 0, ${now}, ${now});
-    INSERT INTO session (id, expires_at, token, created_at, updated_at, user_id)
-      VALUES ('${SESSION.id}', ${now + DAY_MS}, '${SESSION.token}', ${now}, ${now}, '${MEMBER.id}');`;
+    ${[SESSION, SIGN_OUT_SESSION]
+      .map(
+        (session) => `INSERT INTO session (id, expires_at, token, created_at, updated_at, user_id)
+      VALUES ('${session.id}', ${now + DAY_MS}, '${session.token}', ${now}, ${now}, '${MEMBER.id}');`,
+      )
+      .join("\n    ")}`;
   d1(["execute"], ["--command", sql]);
 }
 

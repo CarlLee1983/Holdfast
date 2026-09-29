@@ -1,0 +1,61 @@
+/* 會員面全域 token：外觀參考 shadcn/ui 預設主題（zinc 灰階）。
+   跟著 prefers-color-scheme 切換，不提供手動切換。管理後台不使用。 */
+:root {
+  color-scheme: light dark;
+
+  --font-sans: system-ui, -apple-system, "Segoe UI", "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+
+  --background: #ffffff;
+  --foreground: #09090b;
+  --muted: #f4f4f5;
+  --muted-foreground: #52525b;
+  --border: #d4d4d8;
+  --input: #a1a1aa;
+  --primary: #18181b;
+  --primary-foreground: #fafafa;
+  --ring: #2563eb;
+  --link: #1d4ed8;
+  --destructive: #b91c1c;
+  --destructive-muted: #fef2f2;
+  --destructive-solid: #dc2626;
+  --destructive-solid-foreground: #ffffff;
+
+  --radius: 0.5rem;
+  --control-height: 2.5rem;
+  --control-height-lg: 3rem;
+  --shadow: 0 1px 2px 0 rgb(0 0 0 / 0.06), 0 1px 3px 0 rgb(0 0 0 / 0.08);
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.5rem;
+
+  --content-width: 48rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #09090b;
+    --foreground: #fafafa;
+    --muted: #18181b;
+    --muted-foreground: #a1a1aa;
+    --border: #3f3f46;
+    --input: #71717a;
+    --primary: #fafafa;
+    --primary-foreground: #18181b;
+    --ring: #60a5fa;
+    --link: #93c5fd;
+    --destructive: #f87171;
+    --destructive-muted: #2a0f0f;
+    --destructive-solid: #b91c1c;
+    --destructive-solid-foreground: #ffffff;
+    --shadow: 0 1px 2px 0 rgb(0 0 0 / 0.5);
+  }
+}
