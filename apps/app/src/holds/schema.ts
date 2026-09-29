@@ -7,6 +7,7 @@ import { slots } from "../catalog/schema";
  */
 /** 保留仍占著名額時的狀態；定義在這裡（occupancy 也 import 本檔），由 occupancy 對外再匯出。 */
 export const HELD = "held";
+export const RELEASED = "released";
 
 export const holds = sqliteTable(
   "holds",
@@ -18,7 +19,7 @@ export const holds = sqliteTable(
     // 刻意不設外鍵指向 user：帳號刪除（#13）要移除 Better Auth 的 user，但保留與訂位紀錄必須留下
     memberId: text("member_id").notNull(),
     seats: integer("seats").notNull(),
-    /** 目前只有 `held`；#8、#9 會加入 `confirmed`、`released`。 */
+    /** #8 加入 `confirmed`；過期清理由 `released` 標記。 */
     status: text("status").notNull().default(HELD),
     expiresAt: integer("expires_at").notNull(),
     idempotencyKey: text("idempotency_key").notNull(),
@@ -28,6 +29,8 @@ export const holds = sqliteTable(
   (t) => [
     // 加總已占用名額的子查詢用（ADR 0004）
     index("holds_slot_id_status_expires_at_idx").on(t.slotId, t.status, t.expiresAt),
+    // 定時清理依狀態與到期時間尋找過期保留
+    index("holds_status_expires_at_idx").on(t.status, t.expiresAt),
     uniqueIndex("holds_member_id_idempotency_key_idx").on(t.memberId, t.idempotencyKey),
     // 會員頁列出自己的有效保留
     index("holds_member_id_expires_at_idx").on(t.memberId, t.expiresAt),

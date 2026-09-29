@@ -1,0 +1,1 @@
+CREATE INDEX `holds_status_expires_at_idx` ON `holds` (`status`,`expires_at`);

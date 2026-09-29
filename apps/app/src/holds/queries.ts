@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, lte, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { resources, slots } from "../catalog/schema";
 import {
@@ -7,7 +7,17 @@ import {
   memberActiveInSlot,
 } from "./member-rules";
 import { activeHold, HELD, occupiedSeats } from "./occupancy";
-import { holds } from "./schema";
+import { holds, RELEASED } from "./schema";
+
+/** 只清理到期且仍為 held 的保留；條件更新使重送與確認後晚到的釋放皆為 no-op。 */
+export async function releaseExpiredHolds(db: DrizzleD1Database, now: number): Promise<number> {
+  const result = await db
+    .update(holds)
+    .set({ status: RELEASED })
+    .where(and(eq(holds.status, HELD), lte(holds.expiresAt, now)))
+    .run();
+  return result.meta.changes;
+}
 
 export interface HoldRecord {
   id: number;

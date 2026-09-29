@@ -84,6 +84,14 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
     return this.#holds().listMyHolds(memberId);
   }
 
+  releaseExpiredHolds() {
+    return this.#holds().releaseExpiredHolds();
+  }
+
+  async scheduled(_controller: ScheduledController): Promise<void> {
+    await this.releaseExpiredHolds();
+  }
+
   // 管理 RPC（ADR 0007）：第一個參數是 Cloudflare Access 的原始 JWT，由 App 自行驗簽，
   // 不信任呼叫端的任何身分聲明。輸入以 unknown 接收，在邊界用 zod 驗證。
   listResourcesForAdmin(jwt: string) {
