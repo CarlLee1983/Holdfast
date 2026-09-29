@@ -1,6 +1,7 @@
 ---
 import { env } from "cloudflare:workers";
 import { loginUrl } from "../auth/member";
+import { handleConfirmPost } from "../holds/confirm";
 import { heldNotice } from "../holds/held-notice";
 import { formatTaipeiDate, formatTaipeiTime } from "../catalog/taipei-time";
 
@@ -9,10 +10,24 @@ export const prerender = false;
 const member = Astro.locals.member;
 if (!member) return Astro.redirect(loginUrl(Astro.url), 303);
 
+let confirmError = "";
+if (Astro.request.method === "POST") {
+  const outcome = await handleConfirmPost({ member, request: Astro.request, app: env.APP, url: Astro.url });
+  if ("redirect" in outcome) return Astro.redirect(outcome.redirect, outcome.status);
+  confirmError = outcome.error;
+  Astro.response.status = outcome.status;
+}
+
 // RPC 回報失敗時直接丟出，不把故障顯示成「沒有保留」
 const result = await env.APP.listMyHolds(member.memberId);
 if (!result.ok) throw new Error(`listMyHolds 失敗：${result.reason}`);
 const holds = result.data;
+
+const bookingsResult = await env.APP.listMyBookings(member.memberId);
+if (!bookingsResult.ok) throw new Error(`listMyBookings 失敗：${bookingsResult.reason}`);
+const bookings = bookingsResult.data;
+
+const confirmedId = Astro.url.searchParams.get("confirmed");
 
 const notice = heldNotice(holds, Astro.url.searchParams.get("held"));
 
@@ -24,11 +39,13 @@ const formatDateTime = (epochMs: number) => `${formatTaipeiDate(epochMs)} ${form
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>我的保留 | Holdfast 訂位</title>
+    <title>我的保留與訂位 | Holdfast 訂位</title>
   </head>
   <body>
     <h1>我的保留</h1>
     <p><a href="/">回到時段列表</a>　時間皆為台北時間。</p>
+    {confirmError && <p role="alert">{confirmError}</p>}
+    {confirmedId !== null && bookings.some((b) => String(b.id) === confirmedId) && <p role="status">訂位成功</p>}
     {notice?.kind === "held" && <p role="status">保留成功，請於 {formatDateTime(notice.hold.expiresAt)} 前確認</p>}
     {notice?.kind === "missing" && <p role="status">此保留已過期或不存在</p>}
     {
@@ -43,6 +60,7 @@ const formatDateTime = (epochMs: number) => `${formatTaipeiDate(epochMs)} ${form
               <th>時間</th>
               <th>名額</th>
               <th>到期時間</th>
+              <th>確認</th>
             </tr>
           </thead>
           <tbody>
@@ -55,6 +73,41 @@ const formatDateTime = (epochMs: number) => `${formatTaipeiDate(epochMs)} ${form
                 </td>
                 <td>{hold.seats}</td>
                 <td>{formatDateTime(hold.expiresAt)}</td>
+                <td>
+                  <form method="post">
+                    <input type="hidden" name="holdId" value={hold.id} />
+                    <button type="submit">確認訂位</button>
+                  </form>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )
+    }
+    <h1>我的訂位</h1>
+    {
+      bookings.length === 0 ? (
+        <p>目前沒有訂位</p>
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              <th>資源</th>
+              <th>日期</th>
+              <th>時間</th>
+              <th>名額</th>
+            </tr>
+          </thead>
+          <tbody>
+            {bookings.map((booking) => (
+              <tr>
+                <td>{booking.resourceName}</td>
+                <td>{formatTaipeiDate(booking.startsAt)}</td>
+                <td>
+                  {formatTaipeiTime(booking.startsAt)}–{formatTaipeiTime(booking.endsAt)}
+                </td>
+                <td>{booking.seats}</td>
               </tr>
             ))}
           </tbody>

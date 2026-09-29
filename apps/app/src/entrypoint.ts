@@ -84,6 +84,14 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
     return this.#holds().listMyHolds(memberId);
   }
 
+  confirmHold(memberId: string, input: unknown) {
+    return this.#holds().confirmHold(memberId, input);
+  }
+
+  listMyBookings(memberId: string) {
+    return this.#holds().listMyBookings(memberId);
+  }
+
   releaseExpiredHolds() {
     return this.#holds().releaseExpiredHolds();
   }

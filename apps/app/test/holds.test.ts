@@ -388,3 +388,140 @@ describe("會員層級的保留規則（#7）", () => {
     expect(await activeHolds("m1")).toHaveLength(3);
   });
 });
+
+async function bookings(member: string) {
+  const result = await app.listMyBookings(member);
+  if (!result.ok) throw new Error(result.reason);
+  return result.data;
+}
+
+describe("confirmHold（ADR 0003）", () => {
+  it("到期前確認成功：回傳訂位，保留離開有效保留、進入訂位列表，名額仍被占用", async () => {
+    const created = await app.createHold("m1", hold(3, "k"));
+    const id = created.ok ? created.data.id : 0;
+    setNow(NOW + 1000);
+
+    expect(await app.confirmHold("m1", { holdId: id })).toEqual({
+      ok: true,
+      data: { id, slotId, seats: 3 },
+    });
+    expect(await activeHolds("m1")).toEqual([]);
+    expect(await bookings("m1")).toEqual([
+      { id, slotId, resourceName: "大廳", startsAt: NOW + HOUR, endsAt: NOW + 2 * HOUR, seats: 3 },
+    ]);
+    expect(await remaining()).toBe(7);
+  });
+
+  it("訂位在原保留到期後仍占用名額（不被釋放判定影響）", async () => {
+    const created = await app.createHold("m1", hold(3, "k"));
+    await app.confirmHold("m1", { holdId: created.ok ? created.data.id : 0 });
+
+    setNow(NOW + TTL_SECONDS * 1000 + HOUR / 2);
+
+    expect(await remaining()).toBe(7);
+  });
+
+  it("剛好在到期前 1 毫秒可以確認；到期那一刻（expires_at == now）被拒絕", async () => {
+    const a = await app.createHold("m1", hold(1, "a"));
+    const b = await app.createHold("m2", hold(1, "b"));
+
+    setNow(NOW + TTL_SECONDS * 1000 - 1);
+    expect((await app.confirmHold("m1", { holdId: a.ok ? a.data.id : 0 })).ok).toBe(true);
+
+    setNow(NOW + TTL_SECONDS * 1000);
+    expect(await app.confirmHold("m2", { holdId: b.ok ? b.data.id : 0 })).toEqual({
+      ok: false,
+      reason: "hold_expired",
+    });
+  });
+
+  it("到期後確認被拒絕（釋放尚未執行，列仍在表裡），名額不會因此被占回", async () => {
+    const created = await app.createHold("m1", hold(3, "k"));
+    setNow(NOW + TTL_SECONDS * 1000 + 5000);
+
+    expect(await app.confirmHold("m1", { holdId: created.ok ? created.data.id : 0 })).toEqual({
+      ok: false,
+      reason: "hold_expired",
+    });
+    expect(await bookings("m1")).toEqual([]);
+    expect(await remaining()).toBe(10);
+  });
+
+  it("不能確認別人的保留：hold_not_found，保留不受影響", async () => {
+    const created = await app.createHold("m1", hold(2, "k"));
+    const id = created.ok ? created.data.id : 0;
+
+    expect(await app.confirmHold("m2", { holdId: id })).toEqual({ ok: false, reason: "hold_not_found" });
+    expect(await activeHolds("m1")).toHaveLength(1);
+    expect(await bookings("m2")).toEqual([]);
+  });
+
+  it("保留不存在：hold_not_found", async () => {
+    expect(await app.confirmHold("m1", { holdId: 999_999 })).toEqual({ ok: false, reason: "hold_not_found" });
+  });
+
+  it("重複確認：回傳同一筆訂位，只有一列、名額只占一次；已過期後重送也一樣", async () => {
+    const created = await app.createHold("m1", hold(2, "k"));
+    const id = created.ok ? created.data.id : 0;
+
+    const first = await app.confirmHold("m1", { holdId: id });
+    const again = await app.confirmHold("m1", { holdId: id });
+    setNow(NOW + HOUR);
+    const late = await app.confirmHold("m1", { holdId: id });
+
+    expect(first.ok).toBe(true);
+    expect(again).toEqual(first);
+    expect(late).toEqual(first);
+    expect(await countRows("holds")).toBe(1);
+    expect(await remaining()).toBe(8);
+  });
+
+  it("別人重複確認已確認的訂位：仍是 hold_not_found", async () => {
+    const created = await app.createHold("m1", hold(2, "k"));
+    const id = created.ok ? created.data.id : 0;
+    await app.confirmHold("m1", { holdId: id });
+
+    expect(await app.confirmHold("m2", { holdId: id })).toEqual({ ok: false, reason: "hold_not_found" });
+  });
+
+  it("併發確認同一筆保留：全部成功且是同一筆訂位", async () => {
+    const created = await app.createHold("m1", hold(2, "k"));
+    const id = created.ok ? created.data.id : 0;
+
+    const results = await Promise.all(Array.from({ length: 5 }, () => app.confirmHold("m1", { holdId: id })));
+
+    expect(results.every((r) => r.ok && r.data.id === id)).toBe(true);
+    expect(await remaining()).toBe(8);
+  });
+
+  it.each([
+    ["holdId 為 0", { holdId: 0 }],
+    ["holdId 不是整數", { holdId: 1.5 }],
+    ["缺少 holdId", {}],
+  ])("%s：invalid_input", async (_label, input) => {
+    expect(await app.confirmHold("m1", input)).toMatchObject({ ok: false, reason: "invalid_input" });
+  });
+
+  it("memberId 空字串：invalid_input", async () => {
+    expect(await app.confirmHold("", { holdId: 1 })).toMatchObject({ ok: false, reason: "invalid_input" });
+  });
+});
+
+describe("listMyBookings", () => {
+  it("只列自己已確認的訂位，依時段開始時間排序；不列別人的與未確認的", async () => {
+    const later = await insertSlot(resourceId, NOW + 5 * HOUR, NOW + 6 * HOUR, 10);
+    const a = await app.createHold("m1", hold(1, "a", later));
+    const b = await app.createHold("m1", hold(1, "b"));
+    await app.createHold("m1", hold(1, "c", await insertSlot(resourceId, NOW + 7 * HOUR, NOW + 8 * HOUR, 10)));
+    const other = await app.createHold("m2", hold(1, "d"));
+    await app.confirmHold("m1", { holdId: a.ok ? a.data.id : 0 });
+    await app.confirmHold("m1", { holdId: b.ok ? b.data.id : 0 });
+    await app.confirmHold("m2", { holdId: other.ok ? other.data.id : 0 });
+
+    expect((await bookings("m1")).map((x) => x.id)).toEqual([b.ok ? b.data.id : 0, a.ok ? a.data.id : 0]);
+  });
+
+  it("memberId 空字串：invalid_input", async () => {
+    expect(await app.listMyBookings("")).toMatchObject({ ok: false, reason: "invalid_input" });
+  });
+});

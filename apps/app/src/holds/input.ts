@@ -17,6 +17,10 @@ export const createHoldInput = z.object({
     .max(MAX_IDEMPOTENCY_KEY_LENGTH, `冪等鍵不可超過 ${MAX_IDEMPOTENCY_KEY_LENGTH} 個字`),
 });
 
+export const confirmHoldInput = z.object({
+  holdId: wholeNumber("保留").positive("保留編號無效"),
+});
+
 /** 會員編號由 Web 從 session 解析後帶入（App 信任它），這裡只擋空值與離譜的長度。 */
 export const memberIdInput = z
   .string({ error: "會員編號必須是文字" })
