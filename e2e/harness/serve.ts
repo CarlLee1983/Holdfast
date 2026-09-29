@@ -1,6 +1,6 @@
 /**
  * E2E 的受測伺服器（Playwright 的 webServer 啟動它）：
- * 重建 E2E 專用的狀態 → 建置 Web → 套用 migration 與 seed → 寫入測試會員的 session（含一個專供登出測試的） → 以 `wrangler dev` 跑兩個 Worker。
+ * 重建 E2E 專用的狀態 → 建置 Web → 套用 migration 與 seed → 寫入測試會員的 session（含一個專供登出測試的，以及倒數測試專用的另一位會員） → 以 `wrangler dev` 跑兩個 Worker。
  *
  * 不碰開發者的本機狀態：D1 放在 `.wrangler/e2e/state`；Web 建置到 `.wrangler/e2e/web`（不覆寫 `apps/web/dist`）；
  * 兩個 Worker 的設定檔旁都放 E2E 自己的 `.dev.vars`（wrangler 只讀設定檔旁的 `.dev.vars`，
@@ -11,7 +11,7 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { experimental_readRawConfig } from "wrangler";
-import { AUTH_SECRET, BASE_URL, MEMBER, PORT, SESSION, SIGN_OUT_SESSION } from "./constants";
+import { AUTH_SECRET, BASE_URL, COUNTDOWN_MEMBER, COUNTDOWN_SESSION, MEMBER, PORT, SESSION, SIGN_OUT_SESSION } from "./constants";
 
 const ROOT = resolve(import.meta.dirname, "../..");
 const APP_DIR = join(ROOT, "apps/app");
@@ -67,15 +67,23 @@ function d1(command: string[], options: string[] = []): void {
 /** 測試會員與 session 直接寫入 D1，取代社群登入（ADR 0013）。值都是 constants.ts 的常數（不含單引號），直接內插。 */
 function insertMemberSession(): void {
   const now = Date.now();
-  const sql = `
+  const members = [
+    { member: MEMBER, sessions: [SESSION, SIGN_OUT_SESSION] },
+    { member: COUNTDOWN_MEMBER, sessions: [COUNTDOWN_SESSION] },
+  ];
+  const sql = members
+    .map(
+      ({ member, sessions }) => `
     INSERT INTO "user" (id, name, email, email_verified, created_at, updated_at)
-      VALUES ('${MEMBER.id}', '${MEMBER.name}', '${MEMBER.email}', 0, ${now}, ${now});
-    ${[SESSION, SIGN_OUT_SESSION]
+      VALUES ('${member.id}', '${member.name}', '${member.email}', 0, ${now}, ${now});
+    ${sessions
       .map(
         (session) => `INSERT INTO session (id, expires_at, token, created_at, updated_at, user_id)
-      VALUES ('${session.id}', ${now + DAY_MS}, '${session.token}', ${now}, ${now}, '${MEMBER.id}');`,
+      VALUES ('${session.id}', ${now + DAY_MS}, '${session.token}', ${now}, ${now}, '${member.id}');`,
       )
-      .join("\n    ")}`;
+      .join("\n    ")}`,
+    )
+    .join("\n");
   d1(["execute"], ["--command", sql]);
 }
 
