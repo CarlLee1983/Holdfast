@@ -1,25 +1,5 @@
+import { isBlank, toNumber, toText, type FormLike } from "../shared/form-values";
 import { parseTaipeiDateTime } from "./taipei-input";
-
-interface FormLike {
-  get(name: string): unknown;
-}
-
-/**
- * 表單值轉數字。空白或非數字轉成 NaN，不在 Web 判斷規則：
- * 由 App 的 zod 驗證回報欄位錯誤（Web 不決定什麼輸入合法）。
- */
-function toNumber(value: unknown): number {
-  return isBlank(value) ? Number.NaN : Number(value);
-}
-
-/** 不是字串（欄位不存在、檔案）或只有空白，都算留空。 */
-function isBlank(value: unknown): boolean {
-  return typeof value !== "string" || value.trim() === "";
-}
-
-function toText(value: unknown): string {
-  return typeof value === "string" ? value : "";
-}
 
 /**
  * 資源表單 → RPC 輸入。建立時保留期限留空就省略（App 套預設 600 秒）；

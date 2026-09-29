@@ -3,7 +3,7 @@ import { env } from "cloudflare:workers";
 const DEFAULT_SEATS_PER_HOLD = 4;
 const DEFAULT_CANCELLATION_CUTOFF_SECONDS = 3600;
 
-/** 每個測試前清空資料表（外鍵順序：先 slots 後 resources；session、account 先於 user）。 */
+/** 每個測試前清空資料表（外鍵順序：先 holds、slots 後 resources；session、account 先於 user）。 */
 export async function resetDb(): Promise<void> {
   await env.DB.batch([
     env.DB.prepare("DELETE FROM session"),
@@ -12,6 +12,7 @@ export async function resetDb(): Promise<void> {
     env.DB.prepare("DELETE FROM rate_limit"),
     env.DB.prepare('DELETE FROM "user"'),
     env.DB.prepare("DELETE FROM admin_audit"),
+    env.DB.prepare("DELETE FROM holds"),
     env.DB.prepare("DELETE FROM slots"),
     env.DB.prepare("DELETE FROM resources"),
   ]);
@@ -59,7 +60,7 @@ export async function insertSlot(
   return result!.id;
 }
 
-export async function countRows(table: "resources" | "slots" | "admin_audit"): Promise<number> {
+export async function countRows(table: "resources" | "slots" | "admin_audit" | "holds"): Promise<number> {
   const row = await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${table}`).first<{ n: number }>();
   return row!.n;
 }
@@ -78,4 +79,9 @@ export async function auditRows(): Promise<AuditRow[]> {
     "SELECT actor_email, action, target_type, target_id, at, detail FROM admin_audit ORDER BY id",
   ).all<AuditRow>();
   return results;
+}
+
+/** 直接改容量（管理 RPC 不提供修改時段），用來造出「既有占用超過容量」的情況。 */
+export async function setSlotCapacity(slotId: number, capacity: number): Promise<void> {
+  await env.DB.prepare("UPDATE slots SET capacity = ? WHERE id = ?").bind(capacity, slotId).run();
 }

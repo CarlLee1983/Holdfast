@@ -6,7 +6,7 @@ status: accepted
 
 建立保留時，用一句 `INSERT … SELECT … WHERE (未過期保留與訂位的名額總和) + k <= 容量` 完成檢查與寫入，並以 `meta.changes` 判斷成敗；時段上不存「已占用名額」欄位。理由有二：D1 沒有跨往返的互動式交易，「先查剩餘、再寫入」在併發下不安全；而計數欄位要等釋放執行才會扣回，會違反 [ADR 0003](0003-confirm-judged-by-time.md)——過期判斷寫在加總子查詢裡（`expires_at > now`），規則就由語句本身保證。建立保留帶冪等鍵（唯一約束），因為 D1 不自動重試寫入，失敗重送可能產生重複保留。
 
-依據（見 [`docs/research/cloudflare-concurrency.md`](../research/cloudflare-concurrency.md)）：每個 D1 資料庫單執行緒、逐句執行、寫入都到 primary——**已驗證（官方文件，經研究 agent 引用，未逐條複核）**；不支援 `BEGIN TRANSACTION`——出自 2022 年部落格，**待實測**；`batch()` 在「影響 0 列」時不回滾——**推論**。
+依據（見 [`docs/research/cloudflare-concurrency.md`](../research/cloudflare-concurrency.md)）：每個 D1 資料庫單執行緒、逐句執行、寫入都到 primary——**已驗證（官方文件，經研究 agent 引用，未逐條複核）**；不支援 `BEGIN TRANSACTION`——出自 2022 年部落格，**本機已實測（見研究文件），production 未實測**；`batch()` 在「影響 0 列」時不回滾——**本機已實測（見研究文件），production 未實測**。實測的位置見研究文件〈[D1 寫入併發模型](../research/cloudflare-concurrency.md)〉一節。
 
 **Considered Options:**
 - 時段計數欄位加條件式 UPDATE——否決，理由同上。

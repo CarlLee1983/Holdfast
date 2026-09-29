@@ -22,6 +22,8 @@
 **單一敘述是原子的。** 文件只說 auto-commit；依 SQLite 語意，auto-commit 下每個敘述自成一個交易。**推論**（由上條 + SQLite 語意）
 
 **不支援互動式交易（跨往返的 BEGIN … COMMIT）。** 2022 年官方部落格：「if you try running `BEGIN TRANSACTION` in D1 you'll get an error」，理由是 Worker 可能開了交易後崩潰、卡住唯一的寫入者。同文提出的 `db.transaction()`（stored procedure 形式）當時標示為規劃中；現行 D1 Worker API 文件中找不到此 API。**已驗證（官方部落格，2022-09-27）**；「至今仍未提供互動式交易」為 **推論**（依現行 API 文件未列出）。
+
+**已實測（本機 miniflare/workerd，2026-09-29，`apps/app/test/d1-semantics.test.ts`）；production D1 未實測**：`env.DB.exec("BEGIN TRANSACTION")` 與 `prepare("BEGIN TRANSACTION").run()` 都丟出錯誤（訊息要求改用 `state.storage.transaction()`）。
 - https://blog.cloudflare.com/whats-new-with-d1/
 - https://developers.cloudflare.com/d1/best-practices/import-export-data/ （匯入時需移除 BEGIN TRANSACTION / COMMIT）
 
@@ -30,6 +32,8 @@
 或 `INSERT INTO hold (...) SELECT ... WHERE (SELECT COALESCE(SUM(k),0) FROM hold WHERE slot=? AND active) + ? <= capacity`。
 由於資料庫單一執行緒逐一處理、單句在 auto-commit 下原子，檢查與寫入之間不可能插入其他寫入，因此可靠。多句（先 UPDATE 計數、再 INSERT hold）放進同一個 `batch()` 也原子。**推論**（由上述已驗證事實推得，建議以並發壓測驗證）。
 注意：`batch()` 內某句「影響 0 列」不是錯誤，不會觸發回滾——若第一句條件 UPDATE 沒成功、第二句 INSERT 仍會執行。需把條件寫進每一句（例如 INSERT … SELECT … WHERE changes() > 0，或 INSERT 自帶容量子查詢）。**推論**（文件只說「statement fails」才回滾）。
+
+**已實測（本機 miniflare/workerd，2026-09-29，`apps/app/test/d1-semantics.test.ts`）；production D1 未實測**：`batch([UPDATE … WHERE 0, INSERT …])` 中 UPDATE 的 `meta.changes` 為 0，後面的 INSERT 仍然提交，沒有回滾；`batch([INSERT 成功, 會出錯的 INSERT])` 丟出例外，先前成功的 INSERT 一併回滾。
 
 **偵測成功：`meta.changes`。** D1Result 的 `meta` 含 `changes`（「the number of changes made to the database」）、`rows_written`、`last_row_id`、`changed_db`、`total_attempts`。**已驗證（官方文件）**
 - https://developers.cloudflare.com/d1/worker-api/return-object/
@@ -102,7 +106,9 @@
 ## 對設計的含意（全部為 **推論**）
 
 1. 以 D1 實作時，防超賣的正確性可以只靠「條件寫在寫入敘述裡」達成：單句條件 UPDATE / INSERT…SELECT，或條件分散到 `batch()` 內每一句，再以 `meta.changes` 判斷成敗。不能採用「先 SELECT 剩餘量、再在另一個往返 UPDATE」的應用層檢查，因為沒有互動式交易。
+   併發實測（ADR 0004 的 Falsified-if，`apps/app/test/holds.test.ts`「併發不超賣」）：容量 5、10 位會員各要 1 個名額，恰好 5 個成功；各要 2 個名額，恰好 2 個成功，名額總和從未超過容量。**已實測（本機 miniflare/workerd，2026-09-29）；production D1 未實測**。
 2. `batch()` 只在敘述**出錯**時回滾，「影響 0 列」不回滾；多句流程必須讓後續敘述自帶條件，或改用單句設計。
+   本機實測結果與此一致（`BEGIN TRANSACTION` 丟錯、影響 0 列不回滾、出錯才回滾），見上文；production D1 未實測。
 3. 若容量以「計算有效 hold 總和」而非計數欄位實作，過期判斷可直接放進子查詢（`expires_at > ?now`），與「confirm 時比對時間戳、釋放 job 只清理」的模型一致；需要索引避免 rows read 膨脹。
 4. 寫入重試可能在「實際已提交但回傳錯誤」時造成重複 hold，建立 hold 應帶冪等鍵（唯一約束）。文件未討論此情況，這一點需要實測或保守處理。
 5. 讀取複寫不影響寫入正確性，但顯示給會員的剩餘席位可能過時；若啟用，對剛寫入的會員應以 bookmark 延續 session。

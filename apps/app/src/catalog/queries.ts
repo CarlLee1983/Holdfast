@@ -1,5 +1,6 @@
 import { and, asc, eq, gt, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
+import { occupiedSeats } from "../holds/occupancy";
 import { resources, slots } from "./schema";
 
 export interface ResourceSummary {
@@ -46,11 +47,11 @@ export async function resourceExists(
 }
 
 /**
- * 剩餘名額（Seat）唯一的計算處。ADR 0004：不存已占用計數欄位，
- * 之後保留與訂位進來時，在這裡以「容量 - 未過期保留與訂位的名額總和」的子查詢擴充。
- * 目前還沒有保留，剩餘名額等於容量（Capacity）。
+ * 剩餘名額（Seat）= 容量 - 已占用名額，占用的定義只在 `occupiedSeats`（ADR 0004）。
+ * 已過期但尚未釋放的保留不算占用（ADR 0003）；超占（占用 > 容量）時以 0 顯示。
  */
-const remainingSeats = () => sql<number>`${slots.capacity}`;
+const remainingSeats = (now: number) =>
+  sql<number>`MAX(${slots.capacity} - ${occupiedSeats(sql`${slots.id}`, now)}, 0)`;
 
 /** 列出尚未結束（`ends_at > now`）的時段與剩餘名額，依開始時間排序。 */
 export async function selectSlotAvailability(
@@ -64,7 +65,7 @@ export async function selectSlotAvailability(
       startsAt: slots.startsAt,
       endsAt: slots.endsAt,
       capacity: slots.capacity,
-      remainingSeats: remainingSeats().as("remaining_seats"),
+      remainingSeats: remainingSeats(now).as("remaining_seats"),
     })
     .from(slots)
     .where(and(eq(slots.resourceId, resourceId), gt(slots.endsAt, now)))

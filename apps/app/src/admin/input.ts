@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { invalidInput, type InvalidInput } from "../shared/result";
+import { MAX_SEATS_PER_HOLD, wholeNumber } from "../shared/input";
 
 const DEFAULT_HOLD_TTL_SECONDS = 600;
 
@@ -7,14 +7,10 @@ const DEFAULT_HOLD_TTL_SECONDS = 600;
 const MAX_NAME_LENGTH = 200;
 const MAX_HOLD_TTL_SECONDS = 86_400;
 const MAX_CANCELLATION_CUTOFF_SECONDS = 30 * 86_400;
-const MAX_SEATS_PER_HOLD = 1000;
 const MAX_CAPACITY = 100_000;
 /** 時段時間的合理範圍（UTC epoch 毫秒，含邊界）：2020-01-01 至 2100-01-01。 */
 const MIN_SLOT_TIME = Date.UTC(2020, 0, 1);
 const MAX_SLOT_TIME = Date.UTC(2100, 0, 1);
-
-const wholeNumber = (label: string) =>
-  z.number({ error: `${label}必須是數字` }).int(`${label}必須是整數`);
 
 const resourceId = wholeNumber("資源").positive("資源編號無效");
 
@@ -73,19 +69,3 @@ export const createSlotInput = z
 export type CreateResourceInput = z.output<typeof createResourceInput>;
 export type UpdateResourceInput = z.output<typeof updateResourceInput>;
 export type CreateSlotInput = z.output<typeof createSlotInput>;
-
-/** 在 RPC 邊界驗證未知輸入；失敗時轉成 `invalid_input`，欄位錯誤放在 `fields`（整體錯誤在 `_form`）。 */
-export function parseInput<S extends z.ZodType>(
-  schema: S,
-  input: unknown,
-): { ok: true; data: z.output<S> } | InvalidInput {
-  const parsed = schema.safeParse(input);
-  if (parsed.success) return { ok: true, data: parsed.data };
-
-  const fields: Record<string, string[]> = {};
-  for (const issue of parsed.error.issues) {
-    const field = typeof issue.path[0] === "string" ? issue.path[0] : "_form";
-    (fields[field] ??= []).push(issue.message);
-  }
-  return invalidInput(fields);
-}
