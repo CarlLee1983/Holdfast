@@ -6,21 +6,25 @@ const request = (headers: Record<string, string> = {}) =>
 
 describe("讀取要轉交給 App 的 Access JWT", () => {
   it("有 Cf-Access-Jwt-Assertion header 就原樣轉交，不解析也不判斷", () => {
-    expect(readAccessJwt(request({ "Cf-Access-Jwt-Assertion": "a.b.c" }), {})).toBe("a.b.c");
+    expect(readAccessJwt(request({ "Cf-Access-Jwt-Assertion": "a.b.c" }), {}, false)).toBe("a.b.c");
   });
 
   it("header 存在時，即使設了 ACCESS_DEV_JWT 也以 header 為準", () => {
     expect(
-      readAccessJwt(request({ "Cf-Access-Jwt-Assertion": "from-header" }), { ACCESS_DEV_JWT: "dev" }),
+      readAccessJwt(request({ "Cf-Access-Jwt-Assertion": "from-header" }), { ACCESS_DEV_JWT: "dev" }, true),
     ).toBe("from-header");
   });
 
-  it("沒有 header 時，才用本機開發的 ACCESS_DEV_JWT", () => {
-    expect(readAccessJwt(request(), { ACCESS_DEV_JWT: "dev" })).toBe("dev");
+  it("開發模式下沒有 header 時，才用本機開發的 ACCESS_DEV_JWT", () => {
+    expect(readAccessJwt(request(), { ACCESS_DEV_JWT: "dev" }, true)).toBe("dev");
+  });
+
+  it("非開發模式（正式建置）完全忽略 ACCESS_DEV_JWT，即使有設定", () => {
+    expect(readAccessJwt(request(), { ACCESS_DEV_JWT: "dev" }, false)).toBe("");
   });
 
   it("兩者都沒有回傳空字串（App 會拒絕）", () => {
-    expect(readAccessJwt(request(), {})).toBe("");
-    expect(readAccessJwt(request(), { ACCESS_DEV_JWT: "" })).toBe("");
+    expect(readAccessJwt(request(), {}, true)).toBe("");
+    expect(readAccessJwt(request(), { ACCESS_DEV_JWT: "" }, true)).toBe("");
   });
 });

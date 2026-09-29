@@ -4,6 +4,8 @@ export interface Failure {
   fields: Record<string, string[]>;
 }
 
+const GENERIC_MESSAGE = "操作失敗，請稍後再試";
+
 const MESSAGES: Record<string, string> = {
   resource_not_found: "找不到這個資源",
   slot_overlaps: "與這個資源既有的時段重疊",
@@ -16,8 +18,10 @@ export function describeFailure(result: {
   reason: string;
   fields?: Record<string, string[]>;
 }): Failure {
-  return {
-    message: MESSAGES[result.reason] ?? `操作失敗（${result.reason}）`,
-    fields: result.fields ?? {},
-  };
+  const known = MESSAGES[result.reason];
+  if (known === undefined) {
+    // 內部代碼不給使用者看，只留在 log
+    console.error(`未預期的管理操作失敗原因：${result.reason}`);
+  }
+  return { message: known ?? GENERIC_MESSAGE, fields: result.fields ?? {} };
 }

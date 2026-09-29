@@ -64,6 +64,10 @@ describe("createResource", () => {
     ["取消截止時間為負", { ...validResource, cancellationCutoffSeconds: -1 }, "cancellationCutoffSeconds"],
     ["欄位型別錯誤", { ...validResource, seatsPerHold: "4" }, "seatsPerHold"],
     ["NaN", { ...validResource, seatsPerHold: NaN }, "seatsPerHold"],
+    ["名稱超過 200 字", { ...validResource, name: "a".repeat(201) }, "name"],
+    ["保留期限超過 24 小時", { ...validResource, holdTtlSeconds: 86_401 }, "holdTtlSeconds"],
+    ["單筆名額上限超過 1000", { ...validResource, seatsPerHold: 1001 }, "seatsPerHold"],
+    ["取消截止時間超過 30 天", { ...validResource, cancellationCutoffSeconds: 30 * 86_400 + 1 }, "cancellationCutoffSeconds"],
   ])("輸入無效（%s）回傳 invalid_input 與欄位錯誤，且不寫入", async (_label, input, field) => {
     const result = await app.createResource(jwt, input);
 
@@ -79,6 +83,16 @@ describe("createResource", () => {
 
   it("取消截止時間可以是 0", async () => {
     const result = await app.createResource(jwt, { ...validResource, cancellationCutoffSeconds: 0 });
+    expect(result.ok).toBe(true);
+  });
+
+  it("上限本身合法（名稱 200 字、24 小時、1000 名額、30 天）", async () => {
+    const result = await app.createResource(jwt, {
+      name: "a".repeat(200),
+      holdTtlSeconds: 86_400,
+      seatsPerHold: 1000,
+      cancellationCutoffSeconds: 30 * 86_400,
+    });
     expect(result.ok).toBe(true);
   });
 });
@@ -104,7 +118,11 @@ describe("updateResource", () => {
       target_id: id,
       at: NOW,
     });
-    expect(JSON.parse(rows[0]!.detail)).toEqual(changed);
+    // before 與 after 一起記錄；before 由 batch 內先於 UPDATE 的那句 INSERT … SELECT 讀出
+    expect(JSON.parse(rows[0]!.detail)).toEqual({
+      before: { name: "大廳", holdTtlSeconds: 600, seatsPerHold: 4, cancellationCutoffSeconds: 3600 },
+      after: changed,
+    });
   });
 
   it("未知的資源回傳 resource_not_found，且不寫稽核紀錄", async () => {
@@ -192,6 +210,10 @@ describe("createSlot", () => {
     ["容量非整數", slot(NOW + HOUR, NOW + 2 * HOUR, 2.5, 1), "capacity"],
     ["缺少開始時間", { resourceId: 1, endsAt: NOW, capacity: 1 }, "startsAt"],
     ["時間不是數字", { ...slot(NOW, NOW + HOUR, 10, 1), startsAt: "2030-01-01" }, "startsAt"],
+    ["容量超過 100000", slot(NOW + HOUR, NOW + 2 * HOUR, 100_001, 1), "capacity"],
+    ["開始早於 2020-01-01", slot(Date.UTC(2019, 11, 31), NOW, 10, 1), "startsAt"],
+    ["結束晚於 2100-01-01", slot(NOW, Date.UTC(2100, 0, 1) + 1, 10, 1), "endsAt"],
+    ["時間是毫秒誤當秒（過小）", slot(1_893_495_600, 1_893_502_800, 10, 1), "startsAt"],
   ])("輸入無效（%s）回傳 invalid_input，且不寫入", async (_label, input, field) => {
     const result = await app.createSlot(jwt, input);
 
@@ -199,6 +221,14 @@ describe("createSlot", () => {
     expect(!result.ok && result.reason === "invalid_input" && result.fields[field]?.length).toBeGreaterThan(0);
     expect(await countRows("slots")).toBe(0);
     expect(await countRows("admin_audit")).toBe(0);
+  });
+
+  it("時間範圍與容量的上限本身合法（2020-01-01 至 2100-01-01、容量 100000）", async () => {
+    const result = await app.createSlot(
+      jwt,
+      slot(Date.UTC(2020, 0, 1), Date.UTC(2100, 0, 1), 100_000),
+    );
+    expect(result.ok).toBe(true);
   });
 
   it("未知的資源回傳 resource_not_found，且不寫入", async () => {

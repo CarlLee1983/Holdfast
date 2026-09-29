@@ -5,12 +5,13 @@
 // 用法：bun run admin:dev-token [email]
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { exportJWK, generateKeyPair, SignJWT } from "jose";
+import { SignJWT } from "jose";
+import { generateDevKeys, LOCAL_TEAM_DOMAIN } from "./dev-keys";
 
-const TEAM_DOMAIN = "holdfast-dev.cloudflareaccess.com";
+const TEAM_DOMAIN = LOCAL_TEAM_DOMAIN;
 const AUDIENCE = "holdfast-dev-audience";
 const KID = "holdfast-dev-key";
-const TOKEN_LIFETIME_SECONDS = 30 * 24 * 3600;
+const TOKEN_LIFETIME_SECONDS = 7 * 24 * 3600;
 
 const repoRoot = path.resolve(import.meta.dirname, "../../..");
 const email = process.argv[2] ?? "dev-admin@example.com";
@@ -28,10 +29,7 @@ async function upsertDevVars(file: string, values: Record<string, string>) {
   await writeFile(file, [...kept, ...added].join("\n") + "\n");
 }
 
-const { publicKey, privateKey } = await generateKeyPair("RS256", { extractable: true });
-const meta = { alg: "RS256", use: "sig", kid: KID };
-const publicJwk = { ...(await exportJWK(publicKey)), ...meta };
-const privateJwk = { ...(await exportJWK(privateKey)), ...meta };
+const { privateKey, publicJwk, privateJwk } = await generateDevKeys(KID);
 
 const now = Math.floor(Date.now() / 1000);
 const token = await new SignJWT({ email })
@@ -53,5 +51,5 @@ await upsertDevVars(path.join(repoRoot, "apps/app/.dev.vars"), {
 });
 await upsertDevVars(path.join(repoRoot, "apps/web/.dev.vars"), { ACCESS_DEV_JWT: token });
 
-console.log(`已寫入 apps/app/.dev.vars 與 apps/web/.dev.vars（操作者 ${email}，效期 30 天）。`);
+console.log(`已寫入 apps/app/.dev.vars 與 apps/web/.dev.vars（操作者 ${email}，效期 7 天）。`);
 console.log("重新啟動 bun run dev / bun run preview 後生效。");

@@ -9,8 +9,12 @@ interface FormLike {
  * 由 App 的 zod 驗證回報欄位錯誤（Web 不決定什麼輸入合法）。
  */
 function toNumber(value: unknown): number {
-  if (typeof value !== "string" || value.trim() === "") return Number.NaN;
-  return Number(value);
+  return isBlank(value) ? Number.NaN : Number(value);
+}
+
+/** 不是字串（欄位不存在、檔案）或只有空白，都算留空。 */
+function isBlank(value: unknown): boolean {
+  return typeof value !== "string" || value.trim() === "";
 }
 
 function toText(value: unknown): string {
@@ -28,8 +32,7 @@ export function resourceFormToInput(form: FormLike, id?: number) {
     cancellationCutoffSeconds: toNumber(form.get("cancellationCutoffSeconds")),
   };
   const ttlRaw = form.get("holdTtlSeconds");
-  const ttlBlank = typeof ttlRaw !== "string" || ttlRaw.trim() === "";
-  const ttl = id === undefined && ttlBlank ? {} : { holdTtlSeconds: toNumber(ttlRaw) };
+  const ttl = id === undefined && isBlank(ttlRaw) ? {} : { holdTtlSeconds: toNumber(ttlRaw) };
   return id === undefined ? { ...input, ...ttl } : { id, ...input, ...ttl };
 }
 
@@ -41,4 +44,13 @@ export function slotFormToInput(form: FormLike, resourceId: number) {
     endsAt: parseTaipeiDateTime(form.get("endsAt")) ?? Number.NaN,
     capacity: toNumber(form.get("capacity")),
   };
+}
+
+/** 表單 → 字串記錄（略過檔案欄位），送出失敗時用來把使用者輸入的值填回表單。 */
+export function formToRecord(form: FormData): Record<string, string> {
+  const record: Record<string, string> = {};
+  for (const [key, value] of form) {
+    if (typeof value === "string") record[key] = value;
+  }
+  return record;
 }

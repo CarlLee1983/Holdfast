@@ -1,15 +1,16 @@
 ---
 import { env } from "cloudflare:workers";
 import { readAccessJwt } from "../../../admin/access-jwt";
-import { resourceFormToInput, slotFormToInput } from "../../../admin/forms";
+import { formToRecord, resourceFormToInput, slotFormToInput } from "../../../admin/forms";
 import { describeFailure, type Failure } from "../../../admin/reasons";
 import { formatTaipeiDate, formatTaipeiTime } from "../../../catalog/taipei-time";
+import AccessDenied from "../../../components/AccessDenied.astro";
 import ResourceForm from "../../../components/ResourceForm.astro";
 import AdminLayout from "../../../layouts/AdminLayout.astro";
 
 export const prerender = false;
 
-const jwt = readAccessJwt(Astro.request, env);
+const jwt = readAccessJwt(Astro.request, env, import.meta.env.DEV);
 const resourceId = Number(Astro.params.id);
 
 let resourceFailure: Failure | undefined;
@@ -19,7 +20,7 @@ let notice = "";
 
 if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
-  submitted = Object.fromEntries([...form].filter(([, v]) => typeof v === "string")) as Record<string, string>;
+  submitted = formToRecord(form);
   const intent = form.get("intent");
 
   if (intent === "update-resource") {
@@ -53,7 +54,7 @@ const slotErrors = slotFailure?.fields ?? {};
 <AdminLayout title={resource ? resource.name : "資源"}>
   {
     unauthorized ? (
-      <p class="error" role="alert">沒有權限：請確認已通過 Cloudflare Access 登入。</p>
+      <AccessDenied />
     ) : !resource ? (
       <p class="error" role="alert">找不到這個資源。</p>
     ) : (

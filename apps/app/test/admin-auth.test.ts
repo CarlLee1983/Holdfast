@@ -1,6 +1,7 @@
 import { env, exports } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { generateRogueKey, mintAccessJwt } from "./access";
+import { TEST_REMOTE_TEAM_DOMAIN } from "./constants";
 import { setNow } from "./clock";
 import { countRows, insertResource, resetDb } from "./db";
 
@@ -77,13 +78,18 @@ describe("管理 RPC 的 Access JWT 驗證", () => {
     await expectAllRejected(await mintAccessJwt({ iss: "https://evil.cloudflareaccess.com" }));
   });
 
-  it("已過期被拒絕；以注入的 Clock 判斷，exp 恰等於現在也算過期", async () => {
+  it("已過期被拒絕：超過 30 秒容許誤差的拒絕，誤差內的接受（以注入的 Clock 判斷）", async () => {
     await expectAllRejected(await mintAccessJwt({ iat: NOW_SECONDS - 7200, exp: NOW_SECONDS - 3600 }));
-    await expectAllRejected(await mintAccessJwt({ iat: NOW_SECONDS - 7200, exp: NOW_SECONDS }));
+    await expectAllRejected(await mintAccessJwt({ iat: NOW_SECONDS - 7200, exp: NOW_SECONDS - 31 }));
+
+    const withinTolerance = await mintAccessJwt({ iat: NOW_SECONDS - 7200, exp: NOW_SECONDS - 20 });
+    expect((await app.listResourcesForAdmin(withinTolerance)).ok).toBe(true);
 
     const jwt = await mintAccessJwt({ exp: NOW_SECONDS + 60 });
     expect((await app.listResourcesForAdmin(jwt)).ok).toBe(true);
-    setNow(NOW + 61_000); // 快轉到 JWT 過期之後
+    setNow(NOW + 80_000); // 過期 20 秒，仍在容許誤差內
+    expect((await app.listResourcesForAdmin(jwt)).ok).toBe(true);
+    setNow(NOW + 100_000); // 過期 40 秒，超過容許誤差
     expect(await app.listResourcesForAdmin(jwt)).toEqual(UNAUTHORIZED);
   });
 
@@ -92,7 +98,7 @@ describe("管理 RPC 的 Access JWT 驗證", () => {
   });
 });
 
-describe("Access 設定缺漏時 fail closed", () => {
+describe("Access 設定缺漏或不合法時 fail closed", () => {
   const original = { teamDomain: env.ACCESS_TEAM_DOMAIN, aud: env.ACCESS_AUD, jwks: env.ACCESS_JWKS_JSON };
 
   beforeEach(async () => {
@@ -103,6 +109,7 @@ describe("Access 設定缺漏時 fail closed", () => {
     env.ACCESS_TEAM_DOMAIN = original.teamDomain;
     env.ACCESS_AUD = original.aud;
     env.ACCESS_JWKS_JSON = original.jwks;
+    vi.restoreAllMocks();
   });
 
   it("ACCESS_AUD 為空時，即使 JWT 完全合法也拒絕", async () => {
@@ -117,34 +124,71 @@ describe("Access 設定缺漏時 fail closed", () => {
     await expectAllRejected(jwt);
   });
 
-  it("ACCESS_JWKS_JSON 內容損毀時拒絕", async () => {
+  it("local.invalid 但 ACCESS_JWKS_JSON 內容損毀或缺少時拒絕", async () => {
     const jwt = await mintAccessJwt();
     env.ACCESS_JWKS_JSON = "{not json";
     await expectAllRejected(jwt);
+    env.ACCESS_JWKS_JSON = undefined;
+    await expectAllRejected(jwt);
+  });
+
+  it("真實團隊網域搭配內嵌 JWKS 視為設定錯誤，拒絕（內嵌 JWKS 只給 local.invalid）", async () => {
+    const jwt = await mintAccessJwt({ iss: `https://${TEST_REMOTE_TEAM_DOMAIN}` });
+    env.ACCESS_TEAM_DOMAIN = TEST_REMOTE_TEAM_DOMAIN; // ACCESS_JWKS_JSON 仍有值
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    await expectAllRejected(jwt);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["夾帶 @ 的網址欺騙", "holdfast-test.cloudflareaccess.com@evil.com"],
+    ["帶路徑與 fragment", "evil.com/x#"],
+    ["含空白", "a b"],
+    ["不是 cloudflareaccess.com", "holdfast-test.example.com"],
+    ["多一層子網域", "a.b.cloudflareaccess.com"],
+    ["帶埠號", "holdfast-test.cloudflareaccess.com:8443"],
+  ])("不合法的團隊網域（%s）拒絕，且不對外抓取", async (_label, teamDomain) => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    env.ACCESS_JWKS_JSON = undefined;
+    env.ACCESS_TEAM_DOMAIN = teamDomain;
+    await expectAllRejected(await mintAccessJwt({ iss: `https://${teamDomain}` }));
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
 
 describe("沒有內嵌 JWKS 時抓取 Access certs 端點", () => {
-  const jwks = env.ACCESS_JWKS_JSON;
+  const original = { teamDomain: env.ACCESS_TEAM_DOMAIN, jwks: env.ACCESS_JWKS_JSON };
 
   beforeEach(async () => {
     await resetDb();
     setNow(NOW);
+    env.ACCESS_JWKS_JSON = undefined;
+    env.ACCESS_TEAM_DOMAIN = TEST_REMOTE_TEAM_DOMAIN;
   });
   afterEach(() => {
-    env.ACCESS_JWKS_JSON = jwks;
+    env.ACCESS_TEAM_DOMAIN = original.teamDomain;
+    env.ACCESS_JWKS_JSON = original.jwks;
     vi.restoreAllMocks();
   });
 
   it("從 https://<team>/cdn-cgi/access/certs 取金鑰驗簽，並快取而不是每次都抓", async () => {
-    env.ACCESS_JWKS_JSON = undefined;
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(jwks));
-    const jwt = await mintAccessJwt();
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async () => new Response(original.jwks));
+    const jwt = await mintAccessJwt({ iss: `https://${TEST_REMOTE_TEAM_DOMAIN}` });
 
     expect((await app.listResourcesForAdmin(jwt)).ok).toBe(true);
     expect((await app.listResourcesForAdmin(jwt)).ok).toBe(true);
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
-    expect(String(fetchSpy.mock.calls[0]![0])).toBe(`https://${env.ACCESS_TEAM_DOMAIN}/cdn-cgi/access/certs`);
+    expect(String(fetchSpy.mock.calls[0]![0])).toBe(`https://${TEST_REMOTE_TEAM_DOMAIN}/cdn-cgi/access/certs`);
+  });
+
+  it("團隊網域的大小寫與結尾斜線會先正規化", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(original.jwks));
+    env.ACCESS_TEAM_DOMAIN = "Holdfast-Test.CloudflareAccess.com/";
+    const jwt = await mintAccessJwt({ iss: `https://${TEST_REMOTE_TEAM_DOMAIN}` });
+
+    expect((await app.listResourcesForAdmin(jwt)).ok).toBe(true);
   });
 });

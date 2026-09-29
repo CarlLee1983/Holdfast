@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resourceFormToInput, slotFormToInput } from "./forms";
+import { formToRecord, resourceFormToInput, slotFormToInput } from "./forms";
 
 const form = (entries: Record<string, string>) => new URLSearchParams(entries);
 
@@ -57,5 +57,15 @@ describe("時段表單轉 RPC 輸入", () => {
     const input = slotFormToInput(form({ startsAt: "", endsAt: "bad", capacity: "1" }), 1);
     expect(input.startsAt).toBeNaN();
     expect(input.endsAt).toBeNaN();
+  });
+});
+
+describe("表單轉字串記錄（送出失敗時回填欄位用）", () => {
+  it("只保留字串值，略過檔案欄位", () => {
+    const data = new FormData();
+    data.set("name", "大廳");
+    data.set("upload", new File(["x"], "x.txt"));
+
+    expect(formToRecord(data)).toEqual({ name: "大廳" });
   });
 });
