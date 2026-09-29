@@ -3,6 +3,7 @@ import { createAuth, type Auth } from "./auth/auth";
 import { AuthConfigError, parseAuthConfig } from "./auth/config";
 import { AUTH_PATH_PREFIX } from "./auth/paths";
 import { readMemberSession } from "./auth/session";
+import { createAccountService } from "./account/service";
 import { createAdminService } from "./admin/service";
 import { createCatalogService } from "./catalog/service";
 import { createHoldService } from "./holds/service";
@@ -21,6 +22,10 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
 
   #holds() {
     return createHoldService(this.env.DB, systemClock);
+  }
+
+  #account() {
+    return createAccountService(this.env.DB, systemClock);
   }
 
   #admin() {
@@ -90,6 +95,11 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
 
   listMyBookings(memberId: string) {
     return this.#holds().listMyBookings(memberId);
+  }
+
+  /** 刪除會員帳號：未來的訂位取消、有效保留釋放、Better Auth 資料移除；重複呼叫是成功的 no-op。 */
+  deleteAccount(memberId: string) {
+    return this.#account().deleteAccount(memberId);
   }
 
   releaseExpiredHolds() {
