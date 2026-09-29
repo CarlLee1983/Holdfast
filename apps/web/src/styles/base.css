@@ -1,0 +1,126 @@
+/* 會員面的基礎元素樣式，只使用 tokens.css 的變數。後續的卡片沿用同一組 token。 */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: 1.6;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+h1,
+h2,
+h3 {
+  line-height: 1.3;
+  margin: var(--space-6) 0 var(--space-3);
+}
+h1 { font-size: var(--text-xl); }
+h2 { font-size: var(--text-lg); }
+p { margin: var(--space-3) 0; }
+
+a {
+  color: var(--link);
+  text-underline-offset: 0.2em;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+button {
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  min-height: var(--control-height);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  cursor: pointer;
+}
+button:hover:not(:disabled) { opacity: 0.9; }
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+button.secondary {
+  background: var(--background);
+  color: var(--foreground);
+  border-color: var(--border);
+  box-shadow: var(--shadow);
+}
+button.destructive {
+  background: var(--destructive-solid);
+  border-color: var(--destructive-solid);
+  color: var(--destructive-solid-foreground);
+}
+
+input {
+  font: inherit;
+  min-height: var(--control-height);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--input);
+  border-radius: var(--radius);
+  background: var(--background);
+  color: var(--foreground);
+}
+
+label {
+  font-size: var(--text-sm);
+}
+
+[role="alert"],
+[role="status"] {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--muted);
+  color: var(--foreground);
+}
+[role="alert"] {
+  border-color: var(--destructive);
+  background: var(--destructive-muted);
+  color: var(--destructive);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+th,
+td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: middle;
+}
+th { color: var(--muted-foreground); font-weight: 500; }
+
+/* 內容容器：限制最大寬度並置中；頁首與 <main> 共用，左右邊界才會對齊 */
+.container {
+  max-width: var(--content-width);
+  margin-inline: auto;
+  padding-inline: var(--space-4);
+}
+@media (min-width: 40rem) {
+  .container {
+    padding-inline: var(--space-6);
+  }
+}
+
+/* 暫時：表格在窄螢幕上不撐破版面，改為容器內橫向捲動。
+   #41（首頁）與 #42（/me）改成卡片後刪除這條 */
+main { overflow-x: auto; }

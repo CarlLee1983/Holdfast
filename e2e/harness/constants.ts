@@ -16,3 +16,6 @@ export const AUTH_SECRET = "holdfast-e2e-only-secret-not-for-any-real-env";
 /** 測試會員與它的 session（直接寫入 E2E 的 D1，不經 OAuth）。 */
 export const MEMBER = { id: "e2e-member", name: "E2E 會員", email: "e2e-member@members.holdfast.invalid" } as const;
 export const SESSION = { id: "e2e-session", token: "e2e-session-token" } as const;
+
+/** 登出會讓 session 在 D1 失效；驗證登出的測試用這個獨立的 session，才不會讓共用 SESSION 的其他測試失效。 */
+export const SIGN_OUT_SESSION = { id: "e2e-sign-out-session", token: "e2e-sign-out-session-token" } as const;

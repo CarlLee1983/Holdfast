@@ -1,0 +1,109 @@
+---
+import "../styles/tokens.css";
+import "../styles/base.css";
+import { loginUrl } from "../auth/member";
+
+interface Props {
+  /** 頁名；標題組成「<頁名> | Holdfast 訂位」 */
+  title: string;
+  noindex?: boolean;
+}
+
+const { title, noindex = false } = Astro.props;
+const member = Astro.locals.member;
+---
+
+<!doctype html>
+<html lang="zh-Hant-TW">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    {noindex && <meta name="robots" content="noindex" />}
+    <title>{title} | Holdfast 訂位</title>
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="container site-nav" aria-label="主要導覽">
+        <a class="brand" href="/">Holdfast</a>
+        <div class="account">
+          {
+            member ? (
+              <>
+                <span class="member-name">{member.name}</span>
+                <a href="/me">我的保留與訂位</a>
+                <button type="button" class="secondary" id="sign-out">
+                  登出
+                </button>
+              </>
+            ) : Astro.url.pathname === "/login" ? null : (
+              <a href={loginUrl(Astro.url)}>登入</a>
+            )
+          }
+        </div>
+      </nav>
+      <p id="sign-out-error" class="container" role="alert" hidden></p>
+    </header>
+    <main class="container page">
+      <slot />
+    </main>
+    <script>
+      import { requestSignOut } from "../auth/client";
+
+      // 登出：Better Auth 的 sign-out 是 POST（需帶 Origin 與 cookie），回應會清掉 session cookie
+      const signOut = document.querySelector<HTMLButtonElement>("#sign-out");
+      signOut?.addEventListener("click", async () => {
+        // 請求進行中停用按鈕，避免連點重複送出；失敗才恢復
+        signOut.disabled = true;
+        if (await requestSignOut(fetch)) {
+          location.reload();
+          return;
+        }
+        signOut.disabled = false;
+        const error = document.querySelector<HTMLElement>("#sign-out-error")!;
+        error.textContent = "登出失敗，請稍後再試。";
+        error.hidden = false;
+      });
+    </script>
+  </body>
+</html>
+
+<style>
+  .site-header {
+    border-bottom: 1px solid var(--border);
+    padding-block: var(--space-3);
+  }
+  .site-nav {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2) var(--space-4);
+  }
+  .brand {
+    color: var(--foreground);
+    font-weight: 700;
+    font-size: var(--text-lg);
+    text-decoration: none;
+  }
+  .account {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2) var(--space-4);
+    font-size: var(--text-sm);
+  }
+  .member-name {
+    color: var(--muted-foreground);
+  }
+  #sign-out-error {
+    margin-top: var(--space-2);
+  }
+  .page {
+    padding-block: var(--space-4);
+  }
+  @media (min-width: 40rem) {
+    .page {
+      padding-block: var(--space-6);
+    }
+  }
+</style>
