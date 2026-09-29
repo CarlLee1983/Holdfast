@@ -59,7 +59,7 @@ Web Worker 只把請求裡的 `Cf-Access-Jwt-Assertion` 原樣轉交給 App Work
 
 **Fail closed**：App 的 `ACCESS_TEAM_DOMAIN` 或 `ACCESS_AUD` 為空、JWT 缺少或無效時，所有管理 RPC 一律回 `unauthorized`（`/admin` 顯示 403），沒有任何預設放行的路徑。
 
-**每個環境部署前要做的事**：在 Zero Trust 建立保護 `/admin` 的 Access application 之後，把團隊網域與該 application 的 AUD tag 填進 `apps/app/wrangler.jsonc` 的 `env.preview.vars` 與 `env.production.vars`（`ACCESS_TEAM_DOMAIN`、`ACCESS_AUD`，純文字變數、不是 secret）。`ACCESS_TEAM_DOMAIN` 只接受 `<team>.cloudflareaccess.com`（或本機專用的 `local.invalid`），其他值一律拒絕。目前兩個環境都是空字串，也就是管理功能全部拒絕。`ACCESS_JWKS_JSON` 只在團隊網域是 `local.invalid` 時採用（與真實網域並存視為設定錯誤，同樣拒絕）；`ACCESS_DEV_JWT` 只在開發模式（`import.meta.env.DEV`）讀取。兩者都只用於本機，preview / production 不得定義。
+**每個環境的設定**：在 Zero Trust 建立保護 `/admin` 的 Access application 之後，把團隊網域與該 application 的 AUD tag 填進 `apps/app/wrangler.jsonc` 的 `env.preview.vars` 與 `env.production.vars`（`ACCESS_TEAM_DOMAIN`、`ACCESS_AUD`，純文字變數、不是 secret）。`ACCESS_TEAM_DOMAIN` 只接受 `<team>.cloudflareaccess.com`（或本機專用的 `local.invalid`），其他值一律拒絕。目前兩個環境都指向 team `photon-site-pages.cloudflareaccess.com` 與同一個 application 的 AUD（共用的取捨見 ADR 0007）。`ACCESS_JWKS_JSON` 只在團隊網域是 `local.invalid` 時採用（與真實網域並存視為設定錯誤，同樣拒絕）；`ACCESS_DEV_JWT` 只在開發模式（`import.meta.env.DEV`）讀取。兩者都只用於本機，preview / production 不得定義。
 
 **本機開發**：沒有 Access 時，先 `bun run admin:dev-token`（可帶 email 參數）。它會產生一組測試金鑰，私鑰只寫到 `.wrangler/admin-dev/`，公鑰 JWKS 與 Access 設定（團隊網域 `local.invalid`）寫進 `apps/app/.dev.vars`，簽好的 JWT（效期 7 天） 寫進 `apps/web/.dev.vars`（`ACCESS_DEV_JWT`，只在請求沒有 Access header 時使用）；這些檔案都已 gitignore。重啟開發伺服器後開 `/admin`。
 

@@ -26,11 +26,10 @@
   "env": {
     "preview": {
       "workers_dev": false,
-      // 待辦：建立 Access application 後填入。TEAM_DOMAIN 例如 "<team>.cloudflareaccess.com"，
-      // AUD 是該 application 的 Application Audience (AUD) Tag。留空時管理 RPC 全部拒絕。
+      // Access application「holdfast-admin」同時保護兩個環境的 /admin，兩環境共用同一個 AUD（ADR 0007）
       "vars": {
-        "ACCESS_TEAM_DOMAIN": "",
-        "ACCESS_AUD": ""
+        "ACCESS_TEAM_DOMAIN": "photon-site-pages.cloudflareaccess.com",
+        "ACCESS_AUD": "ab3b33e00636c3b35fa7162c81bc860727483e1fb95dc925503981e2740c4914"
       },
       "d1_databases": [
         {
@@ -43,11 +42,10 @@
     },
     "production": {
       "workers_dev": false,
-      // 待辦：建立 Access application 後填入。TEAM_DOMAIN 例如 "<team>.cloudflareaccess.com"，
-      // AUD 是該 application 的 Application Audience (AUD) Tag。留空時管理 RPC 全部拒絕。
+      // Access application「holdfast-admin」同時保護兩個環境的 /admin，兩環境共用同一個 AUD（ADR 0007）
       "vars": {
-        "ACCESS_TEAM_DOMAIN": "",
-        "ACCESS_AUD": ""
+        "ACCESS_TEAM_DOMAIN": "photon-site-pages.cloudflareaccess.com",
+        "ACCESS_AUD": "ab3b33e00636c3b35fa7162c81bc860727483e1fb95dc925503981e2740c4914"
       },
       "d1_databases": [
         {
