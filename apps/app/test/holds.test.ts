@@ -34,6 +34,12 @@ async function activeHolds(member: string) {
   return result.data;
 }
 
+/** 取建立結果的保留編號；建立失敗就丟出，避免用 0 蓋住真正的失敗原因。 */
+function holdId(result: Awaited<ReturnType<typeof app.createHold>>): number {
+  if (!result.ok) throw new Error(`建立保留失敗：${result.reason}`);
+  return result.data.id;
+}
+
 const okSeats = (results: Awaited<ReturnType<typeof app.createHold>>[]) =>
   results.reduce((sum, r) => sum + (r.ok ? r.data.seats : 0), 0);
 
@@ -235,7 +241,7 @@ describe("listMyHolds", () => {
       ok: true,
       data: [
         {
-          id: a.ok ? a.data.id : 0,
+          id: holdId(a),
           slotId,
           resourceName: "大廳",
           startsAt: NOW + HOUR,
@@ -244,7 +250,7 @@ describe("listMyHolds", () => {
           expiresAt: NOW + 600_000,
         },
         {
-          id: b.ok ? b.data.id : 0,
+          id: holdId(b),
           slotId: otherSlotSameTime,
           resourceName: "大廳",
           startsAt: NOW + HOUR,
@@ -398,7 +404,7 @@ async function bookings(member: string) {
 describe("confirmHold（ADR 0003）", () => {
   it("到期前確認成功：回傳訂位，保留離開有效保留、進入訂位列表，名額仍被占用", async () => {
     const created = await app.createHold("m1", hold(3, "k"));
-    const id = created.ok ? created.data.id : 0;
+    const id = holdId(created);
     setNow(NOW + 1000);
 
     expect(await app.confirmHold("m1", { holdId: id })).toEqual({
@@ -414,7 +420,7 @@ describe("confirmHold（ADR 0003）", () => {
 
   it("訂位在原保留到期後仍占用名額（不被釋放判定影響）", async () => {
     const created = await app.createHold("m1", hold(3, "k"));
-    await app.confirmHold("m1", { holdId: created.ok ? created.data.id : 0 });
+    await app.confirmHold("m1", { holdId: holdId(created) });
 
     setNow(NOW + TTL_SECONDS * 1000 + HOUR / 2);
 
@@ -426,10 +432,10 @@ describe("confirmHold（ADR 0003）", () => {
     const b = await app.createHold("m2", hold(1, "b"));
 
     setNow(NOW + TTL_SECONDS * 1000 - 1);
-    expect((await app.confirmHold("m1", { holdId: a.ok ? a.data.id : 0 })).ok).toBe(true);
+    expect((await app.confirmHold("m1", { holdId: holdId(a) })).ok).toBe(true);
 
     setNow(NOW + TTL_SECONDS * 1000);
-    expect(await app.confirmHold("m2", { holdId: b.ok ? b.data.id : 0 })).toEqual({
+    expect(await app.confirmHold("m2", { holdId: holdId(b) })).toEqual({
       ok: false,
       reason: "hold_expired",
     });
@@ -439,7 +445,7 @@ describe("confirmHold（ADR 0003）", () => {
     const created = await app.createHold("m1", hold(3, "k"));
     setNow(NOW + TTL_SECONDS * 1000 + 5000);
 
-    expect(await app.confirmHold("m1", { holdId: created.ok ? created.data.id : 0 })).toEqual({
+    expect(await app.confirmHold("m1", { holdId: holdId(created) })).toEqual({
       ok: false,
       reason: "hold_expired",
     });
@@ -449,7 +455,7 @@ describe("confirmHold（ADR 0003）", () => {
 
   it("不能確認別人的保留：hold_not_found，保留不受影響", async () => {
     const created = await app.createHold("m1", hold(2, "k"));
-    const id = created.ok ? created.data.id : 0;
+    const id = holdId(created);
 
     expect(await app.confirmHold("m2", { holdId: id })).toEqual({ ok: false, reason: "hold_not_found" });
     expect(await activeHolds("m1")).toHaveLength(1);
@@ -462,7 +468,7 @@ describe("confirmHold（ADR 0003）", () => {
 
   it("重複確認：回傳同一筆訂位，只有一列、名額只占一次；已過期後重送也一樣", async () => {
     const created = await app.createHold("m1", hold(2, "k"));
-    const id = created.ok ? created.data.id : 0;
+    const id = holdId(created);
 
     const first = await app.confirmHold("m1", { holdId: id });
     const again = await app.confirmHold("m1", { holdId: id });
@@ -478,7 +484,7 @@ describe("confirmHold（ADR 0003）", () => {
 
   it("別人重複確認已確認的訂位：仍是 hold_not_found", async () => {
     const created = await app.createHold("m1", hold(2, "k"));
-    const id = created.ok ? created.data.id : 0;
+    const id = holdId(created);
     await app.confirmHold("m1", { holdId: id });
 
     expect(await app.confirmHold("m2", { holdId: id })).toEqual({ ok: false, reason: "hold_not_found" });
@@ -486,7 +492,7 @@ describe("confirmHold（ADR 0003）", () => {
 
   it("併發確認同一筆保留：全部成功且是同一筆訂位", async () => {
     const created = await app.createHold("m1", hold(2, "k"));
-    const id = created.ok ? created.data.id : 0;
+    const id = holdId(created);
 
     const results = await Promise.all(Array.from({ length: 5 }, () => app.confirmHold("m1", { holdId: id })));
 
@@ -514,11 +520,11 @@ describe("listMyBookings", () => {
     const b = await app.createHold("m1", hold(1, "b"));
     await app.createHold("m1", hold(1, "c", await insertSlot(resourceId, NOW + 7 * HOUR, NOW + 8 * HOUR, 10)));
     const other = await app.createHold("m2", hold(1, "d"));
-    await app.confirmHold("m1", { holdId: a.ok ? a.data.id : 0 });
-    await app.confirmHold("m1", { holdId: b.ok ? b.data.id : 0 });
-    await app.confirmHold("m2", { holdId: other.ok ? other.data.id : 0 });
+    await app.confirmHold("m1", { holdId: holdId(a) });
+    await app.confirmHold("m1", { holdId: holdId(b) });
+    await app.confirmHold("m2", { holdId: holdId(other) });
 
-    expect((await bookings("m1")).map((x) => x.id)).toEqual([b.ok ? b.data.id : 0, a.ok ? a.data.id : 0]);
+    expect((await bookings("m1")).map((x) => x.id)).toEqual([holdId(b), holdId(a)]);
   });
 
   it("memberId 空字串：invalid_input", async () => {

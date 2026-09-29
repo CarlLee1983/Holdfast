@@ -1,4 +1,5 @@
 import { loginUrl } from "../auth/member";
+import { withFirstFieldDetail } from "../shared/reasons";
 import { holdFormToInput } from "./forms";
 import { describeHoldFailure, holdFailureStatus } from "./reasons";
 
@@ -35,11 +36,7 @@ export async function handleHoldPost({
   const result = await app.createHold(member.memberId, holdFormToInput(form));
   if (result.ok) return { redirect: `/me?held=${result.data.id}`, status: 303 };
 
-  let error = describeHoldFailure(result.reason);
-  if (result.reason === "invalid_input") {
-    // 欄位錯誤訊息由 App 的驗證產生，已是可顯示的文字
-    const detail = Object.values(result.fields).flat()[0];
-    if (detail) error = `${error}：${detail}`;
-  }
+  const message = describeHoldFailure(result.reason);
+  const error = result.reason === "invalid_input" ? withFirstFieldDetail(message, result.fields) : message;
   return { error, status: holdFailureStatus(result.reason) };
 }

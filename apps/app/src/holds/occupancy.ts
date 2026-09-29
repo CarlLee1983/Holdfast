@@ -4,8 +4,6 @@ import { CONFIRMED, HELD, holds } from "./schema";
 // 這個檔案是 catalog 與 holds 之間共用的邊界：catalog 的剩餘名額 import 這裡，
 // 所以它只能依賴 holds/schema，不可以 import catalog（否則變成循環相依）。
 
-export { HELD };
-
 /** 「有效保留」唯一的定義：狀態是 held 且未過期（`expires_at > now`，ADR 0003）。 */
 export const activeHold = (now: number): SQL =>
   and(eq(holds.status, HELD), gt(holds.expiresAt, now))!;
