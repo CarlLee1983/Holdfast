@@ -3,6 +3,7 @@ import { createAuth, type Auth } from "./auth/auth";
 import { AuthConfigError, parseAuthConfig } from "./auth/config";
 import { AUTH_PATH_PREFIX } from "./auth/paths";
 import { readMemberSession } from "./auth/session";
+import { createAccountService } from "./account/service";
 import { createAdminService } from "./admin/service";
 import { createCatalogService } from "./catalog/service";
 import { createHoldService } from "./holds/service";
@@ -21,6 +22,10 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
 
   #holds() {
     return createHoldService(this.env.DB, systemClock);
+  }
+
+  #account() {
+    return createAccountService(this.env.DB, systemClock);
   }
 
   #admin() {
@@ -96,6 +101,11 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
     return this.#holds().listMyBookings(memberId);
   }
 
+  /** 刪除會員帳號：未來的訂位取消、保留中的保留（含已過期尚未清理的）釋放、Better Auth 資料移除；重複呼叫是成功的 no-op。 */
+  deleteAccount(memberId: string) {
+    return this.#account().deleteAccount(memberId);
+  }
+
   releaseExpiredHolds() {
     return this.#holds().releaseExpiredHolds();
   }
@@ -120,6 +130,18 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
 
   createSlot(jwt: string, input: unknown) {
     return this.#admin().createSlot(jwt, input);
+  }
+
+  listSlotsForAdmin(jwt: string, resourceId: number) {
+    return this.#admin().listSlotsForAdmin(jwt, resourceId);
+  }
+
+  updateSlotCapacity(jwt: string, input: unknown) {
+    return this.#admin().updateSlotCapacity(jwt, input);
+  }
+
+  deleteSlot(jwt: string, input: unknown) {
+    return this.#admin().deleteSlot(jwt, input);
   }
 }
 

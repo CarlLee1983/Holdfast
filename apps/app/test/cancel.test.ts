@@ -2,7 +2,7 @@ import { exports } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import { mintAccessJwt } from "./access";
 import { setNow } from "./clock";
-import { insertResource, insertSlot, resetDb } from "./db";
+import { insertResource, insertSlot, insertUser, resetDb } from "./db";
 
 const HOUR = 3_600_000;
 const NOW = Date.UTC(2030, 0, 1);
@@ -19,6 +19,7 @@ let slotId: number;
 beforeEach(async () => {
   await resetDb();
   setNow(NOW);
+  await Promise.all(["m1", "m2", "m3"].map(insertUser));
   resourceId = await insertResource({
     name: "大廳",
     holdTtlSeconds: 600,

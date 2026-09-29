@@ -9,6 +9,8 @@ export interface Failure {
 const MESSAGES: Record<string, string> = {
   resource_not_found: "找不到這個資源",
   slot_overlaps: "與這個資源既有的時段重疊",
+  slot_not_found: "找不到這個時段",
+  slot_in_use: "這個時段仍有有效的保留或訂位，無法刪除",
   invalid_input: "輸入有誤，請修正後再送出",
 };
 

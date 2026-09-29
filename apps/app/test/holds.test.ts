@@ -2,7 +2,7 @@ import { exports } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import { mintAccessJwt } from "./access";
 import { setNow } from "./clock";
-import { countRows, insertResource, insertSlot, resetDb, setSlotCapacity } from "./db";
+import { countRows, insertResource, insertUser, insertSlot, resetDb, setSlotCapacity } from "./db";
 
 const HOUR = 3_600_000;
 const NOW = Date.UTC(2030, 0, 1);
@@ -16,6 +16,7 @@ let slotId: number;
 beforeEach(async () => {
   await resetDb();
   setNow(NOW);
+  await Promise.all(["m1", "m2"].map(insertUser));
   resourceId = await insertResource({ name: "大廳", holdTtlSeconds: TTL_SECONDS, seatsPerHold: 4 });
   slotId = await insertSlot(resourceId, NOW + HOUR, NOW + 2 * HOUR, 10);
 });

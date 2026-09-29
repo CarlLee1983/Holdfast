@@ -26,6 +26,16 @@ export function slotFormToInput(form: FormLike, resourceId: number) {
   };
 }
 
+/** 調整時段容量表單 → RPC 輸入；不判斷容量與占用的關係（調到低於占用是合法的，形成超占）。 */
+export function slotCapacityFormToInput(form: FormLike) {
+  return { slotId: toNumber(form.get("slotId")), capacity: toNumber(form.get("capacity")) };
+}
+
+/** 刪除時段表單 → RPC 輸入。 */
+export function slotIdFormToInput(form: FormLike) {
+  return { slotId: toNumber(form.get("slotId")) };
+}
+
 /** 表單 → 字串記錄（略過檔案欄位），送出失敗時用來把使用者輸入的值填回表單。 */
 export function formToRecord(form: FormData): Record<string, string> {
   const record: Record<string, string> = {};
