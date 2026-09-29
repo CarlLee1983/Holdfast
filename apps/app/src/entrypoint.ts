@@ -117,6 +117,18 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
   createSlot(jwt: string, input: unknown) {
     return this.#admin().createSlot(jwt, input);
   }
+
+  listSlotsForAdmin(jwt: string, resourceId: number) {
+    return this.#admin().listSlotsForAdmin(jwt, resourceId);
+  }
+
+  updateSlotCapacity(jwt: string, input: unknown) {
+    return this.#admin().updateSlotCapacity(jwt, input);
+  }
+
+  deleteSlot(jwt: string, input: unknown) {
+    return this.#admin().deleteSlot(jwt, input);
+  }
 }
 
 export default AppEntrypoint;

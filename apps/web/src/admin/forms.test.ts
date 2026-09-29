@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formToRecord, resourceFormToInput, slotFormToInput } from "./forms";
+import { formToRecord, resourceFormToInput, slotCapacityFormToInput, slotFormToInput, slotIdFormToInput } from "./forms";
 
 const form = (entries: Record<string, string>) => new URLSearchParams(entries);
 
@@ -57,6 +57,22 @@ describe("時段表單轉 RPC 輸入", () => {
     const input = slotFormToInput(form({ startsAt: "", endsAt: "bad", capacity: "1" }), 1);
     expect(input.startsAt).toBeNaN();
     expect(input.endsAt).toBeNaN();
+  });
+});
+
+describe("時段容量與刪除表單轉 RPC 輸入", () => {
+  it("容量表單帶時段編號與容量", () => {
+    expect(slotCapacityFormToInput(form({ slotId: "7", capacity: "12" }))).toEqual({ slotId: 7, capacity: 12 });
+  });
+
+  it("容量或編號不是數字時轉成 NaN，由 App 回報欄位錯誤", () => {
+    const input = slotCapacityFormToInput(form({ slotId: "", capacity: "abc" }));
+    expect(input.slotId).toBeNaN();
+    expect(input.capacity).toBeNaN();
+  });
+
+  it("刪除表單只帶時段編號", () => {
+    expect(slotIdFormToInput(form({ slotId: "7", capacity: "12" }))).toEqual({ slotId: 7 });
   });
 });
 
