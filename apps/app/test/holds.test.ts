@@ -2,7 +2,7 @@ import { exports } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import { mintAccessJwt } from "./access";
 import { setNow } from "./clock";
-import { countRows, insertResource, insertSlot, resetDb, setSlotCapacity } from "./db";
+import { countRows, insertResource, insertUser, insertSlot, resetDb, setSlotCapacity } from "./db";
 
 const HOUR = 3_600_000;
 const NOW = Date.UTC(2030, 0, 1);
@@ -16,6 +16,7 @@ let slotId: number;
 beforeEach(async () => {
   await resetDb();
   setNow(NOW);
+  await Promise.all(["m1", "m2"].map(insertUser));
   resourceId = await insertResource({ name: "大廳", holdTtlSeconds: TTL_SECONDS, seatsPerHold: 4 });
   slotId = await insertSlot(resourceId, NOW + HOUR, NOW + 2 * HOUR, 10);
 });
@@ -436,8 +437,18 @@ describe("confirmHold（ADR 0003）", () => {
     });
     expect(await activeHolds("m1")).toEqual([]);
     expect(await bookings("m1")).toEqual([
-      { id, slotId, resourceName: "大廳", startsAt: NOW + HOUR, endsAt: NOW + 2 * HOUR, seats: 3,
-        status: "confirmed", cancelledAt: null, cancelledBy: null },
+      {
+        id,
+        slotId,
+        resourceName: "大廳",
+        startsAt: NOW + HOUR,
+        endsAt: NOW + 2 * HOUR,
+        seats: 3,
+        status: "confirmed",
+        cancelledAt: null,
+        cancelledBy: null,
+        cancellableUntil: NOW + HOUR - 3600 * 1000,
+      },
     ]);
     expect(await remaining()).toBe(7);
   });

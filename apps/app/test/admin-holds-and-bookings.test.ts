@@ -2,7 +2,7 @@ import { env, exports } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import { ADMIN_EMAIL, mintAccessJwt } from "./access";
 import { setNow } from "./clock";
-import { auditRows, insertResource, insertSlot, resetDb } from "./db";
+import { auditRows, insertResource, insertSlot, insertUser, resetDb } from "./db";
 
 const NOW = Date.UTC(2030, 0, 1);
 const HOUR = 3_600_000;
@@ -56,6 +56,7 @@ describe("admin holds and bookings", () => {
   });
 
   it("cancels after the cutoff, immediately returns capacity, and shows member cancellation", async () => {
+    await insertUser("m1");
     const first = await hold("m1", "first");
     expect((await app.confirmHold("m1", { holdId: first })).ok).toBe(true);
     setNow(NOW + HOUR + 1000);
@@ -67,13 +68,14 @@ describe("admin holds and bookings", () => {
     expect(after.ok && after.data[0]?.remainingSeats).toBe(2);
     const bookings = await app.listMyBookings("m1");
     expect(bookings.ok && bookings.data).toMatchObject([{ id: first, status: "cancelled", cancelledAt: NOW + HOUR + 1000, cancelledBy: "admin" }]);
-    expect(await app.confirmHold("m1", { holdId: first })).toEqual({ ok: false, reason: "hold_expired" });
+    expect(await app.confirmHold("m1", { holdId: first })).toEqual({ ok: false, reason: "booking_cancelled" });
     const rows = await auditRows();
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ actor_email: ADMIN_EMAIL, action: "booking.cancel", target_type: "booking", target_id: first });
   });
 
   it("writes exactly one audit for concurrent and repeated cancellations", async () => {
+    await insertUser("m1");
     const bookingId = await hold("m1", "first");
     await app.confirmHold("m1", { holdId: bookingId });
     const results = await Promise.all(Array.from({ length: 4 }, () => app.cancelBookingForAdmin(jwt, { slotId, bookingId })));
@@ -83,6 +85,7 @@ describe("admin holds and bookings", () => {
   });
 
   it("does not cancel a booking from another slot", async () => {
+    await insertUser("m1");
     const bookingId = await hold("m1", "first");
     await app.confirmHold("m1", { holdId: bookingId });
     const otherSlotId = await insertSlot(resourceId, NOW + 3 * HOUR, NOW + 4 * HOUR, 2);

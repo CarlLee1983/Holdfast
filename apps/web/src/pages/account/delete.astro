@@ -1,0 +1,42 @@
+---
+import { env } from "cloudflare:workers";
+import { handleDeleteAccountPost } from "../../account/delete";
+import { loginUrl } from "../../auth/member";
+
+export const prerender = false;
+
+const member = Astro.locals.member;
+if (!member) return Astro.redirect(loginUrl(Astro.url), 303);
+
+let error = "";
+if (Astro.request.method === "POST") {
+  const outcome = await handleDeleteAccountPost({ member, app: env.APP, url: Astro.url });
+  if ("redirect" in outcome) {
+    // 自己組 Response 而不用 Astro.cookies.delete：middleware 要從回應的 set-cookie header 看到 session cookie 已被清除
+    const response = new Response(null, { status: outcome.status, headers: { location: outcome.redirect } });
+    for (const setCookie of outcome.setCookies) response.headers.append("set-cookie", setCookie);
+    return response;
+  }
+  error = outcome.error;
+  Astro.response.status = outcome.status;
+}
+---
+
+<!doctype html>
+<html lang="zh-Hant-TW">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>刪除帳號 | Holdfast 訂位</title>
+  </head>
+  <body>
+    <h1>刪除帳號</h1>
+    {error && <p role="alert">{error}</p>}
+    <p>刪除後，你的登入資料會從系統移除，且無法復原。</p>
+    <p><strong>你尚未開始的訂位會一併取消，保留中的保留也會釋放。</strong>之後以同一種方式登入，會是一個全新的會員。</p>
+    <form method="post">
+      <button type="submit">確認刪除帳號</button>
+    </form>
+    <p><a href="/me">返回我的保留與訂位</a></p>
+  </body>
+</html>

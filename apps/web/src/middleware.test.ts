@@ -140,6 +140,22 @@ describe("會員 session 放進 locals", () => {
     ]);
   });
 
+  it("頁面回應自己已經清掉 session cookie 時，不再附加 RPC 回的延長 cookie", async () => {
+    app.getMemberSession.mockResolvedValue({
+      member: { memberId: "m1", name: "Alice", expiresAt: 1 },
+      setCookies: ["better-auth.session_token=new; Max-Age=604800; Path=/"],
+    });
+    const cleared = "better-auth.session_token=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax";
+
+    const { response } = await run(
+      "https://holdfast.example/",
+      { headers: { cookie: SESSION_COOKIE } },
+      async () => new Response("page", { headers: { "set-cookie": cleared } }),
+    );
+
+    expect(response.headers.getSetCookie()).toEqual([cleared]);
+  });
+
   it("RPC 丟例外時記一行結構化 log，當作未登入，公開頁面照常回應", async () => {
     app.getMemberSession.mockRejectedValue(new Error("app down"));
     const log = vi.spyOn(console, "error").mockImplementation(() => {});

@@ -32,6 +32,8 @@ export const onRequest = defineMiddleware(async (context, next) => {
 
   const response = await next();
   if (setCookies.length === 0) return response;
+  // 回應自己已經處理 session cookie（例如刪除帳號後清掉它）就不能再把延長的舊 cookie 附上去，否則會把它寫回瀏覽器
+  if (response.headers.getSetCookie().some(hasSessionCookie)) return response;
   // session 被延長時 Better Auth 會重發 cookie；RPC 沒有 Response 可帶，所以在這裡附加，
   // 瀏覽器 cookie 的壽命才會跟 D1 裡的 session 一致。next() 回的 Response 的 headers 不保證可變，複製一份
   const withCookies = new Response(response.body, response);

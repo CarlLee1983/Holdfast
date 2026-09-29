@@ -14,6 +14,12 @@ const MAX_SLOT_TIME = Date.UTC(2100, 0, 1);
 
 const resourceId = wholeNumber("資源").positive("資源編號無效");
 
+const slotId = wholeNumber("時段").positive("時段編號無效");
+
+const capacity = wholeNumber("容量")
+  .min(1, "容量至少為 1")
+  .max(MAX_CAPACITY, `容量不可超過 ${MAX_CAPACITY}`);
+
 const slotTime = (label: string) =>
   wholeNumber(label)
     .min(MIN_SLOT_TIME, `${label}不可早於 2020-01-01`)
@@ -57,21 +63,26 @@ export const createSlotInput = z
     resourceId,
     startsAt: slotTime("開始時間"),
     endsAt: slotTime("結束時間"),
-    capacity: wholeNumber("容量")
-      .min(1, "容量至少為 1")
-      .max(MAX_CAPACITY, `容量不可超過 ${MAX_CAPACITY}`),
+    capacity,
   })
   .refine((slot) => slot.startsAt < slot.endsAt, {
     path: ["endsAt"],
     error: "結束時間必須晚於開始時間",
   });
 
-export const listSlotHoldsAndBookingsInput = z.object({ slotId: wholeNumber("時段").positive("時段編號無效") });
+/** 調整容量：可調到低於已占用（形成超占，CONTEXT.md），所以只驗容量本身的範圍。 */
+export const updateSlotCapacityInput = z.object({ slotId, capacity });
+
+export const deleteSlotInput = z.object({ slotId });
+
+export const listSlotHoldsAndBookingsInput = z.object({ slotId });
 export const cancelBookingInput = z.object({
-  slotId: wholeNumber("時段").positive("時段編號無效"),
+  slotId,
   bookingId: wholeNumber("訂位").positive("訂位編號無效"),
 });
 
 export type CreateResourceInput = z.output<typeof createResourceInput>;
 export type UpdateResourceInput = z.output<typeof updateResourceInput>;
 export type CreateSlotInput = z.output<typeof createSlotInput>;
+export type UpdateSlotCapacityInput = z.output<typeof updateSlotCapacityInput>;
+export type DeleteSlotInput = z.output<typeof deleteSlotInput>;

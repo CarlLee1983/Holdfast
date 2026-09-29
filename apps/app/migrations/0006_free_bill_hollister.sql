@@ -1,0 +1,1 @@
+ALTER TABLE `holds` ADD `cancelled_by` text;

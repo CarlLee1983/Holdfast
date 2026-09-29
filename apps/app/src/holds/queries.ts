@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, lte, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, lte, or, sql, type SQL } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { resources, slots } from "../catalog/schema";
 import {
@@ -6,6 +6,7 @@ import {
   memberActiveHoldCount,
   memberActiveInSlot,
 } from "./member-rules";
+import { cancellableUntil, withinCancellationCutoff } from "./cancellation";
 import { activeHold, occupiedSeats } from "./occupancy";
 import { CANCELLED, CONFIRMED, HELD, holds, RELEASED, type HoldStatus } from "./schema";
 
@@ -43,6 +44,8 @@ export interface MyBooking extends BookingRecord, SlotSummary {
   status: typeof CONFIRMED | typeof CANCELLED;
   cancelledAt: number | null;
   cancelledBy: "admin" | "member" | null;
+  /** 取消截止時刻（UTC epoch 毫秒）：`now <= cancellableUntil` 才能取消。 */
+  cancellableUntil: number;
 }
 
 export interface HoldRequest {
@@ -154,6 +157,7 @@ export async function selectActiveHolds(
 
 /**
  * 確認的單一條件寫入（ADR 0003、0004）：保留屬於該會員、狀態為保留中、且 `now < expires_at`。
+ * 會員帳號必須仍存在，避免與帳號刪除交錯後留下屬於已刪除會員、永久占名額的訂位。
  * 成敗看 `meta.changes`；釋放有沒有跑不參與判定。回傳 `changes`（1 = 已確認）。
  */
 export async function confirmHoldIfActive(
@@ -165,27 +169,55 @@ export async function confirmHoldIfActive(
   const result = await db.run(sql`
     UPDATE holds SET status = ${CONFIRMED}
     WHERE id = ${holdId} AND member_id = ${memberId} AND ${activeHold(now)}
+      AND ${memberExists(memberId)}
   `);
   return result.meta.changes;
 }
+
+/**
+ * 取消的單一條件寫入（ADR 0004）：訂位屬於該會員、狀態為 confirmed、且仍在取消截止時刻內
+ * （定義見 `withinCancellationCutoff`，用資源目前的設定，不做快照）。
+ * 成敗看 `meta.changes`；已取消的重送 changes 為 0，由呼叫端診斷。回傳 `changes`（1 = 已取消）。
+ */
+export async function cancelBookingIfBeforeCutoff(
+  db: DrizzleD1Database,
+  memberId: string,
+  bookingId: number,
+  now: number,
+): Promise<number> {
+  const result = await db.run(sql`
+    UPDATE holds SET status = ${CANCELLED}, cancelled_at = ${now}, cancelled_by = 'member'
+    WHERE id = ${bookingId} AND member_id = ${memberId} AND status = ${CONFIRMED}
+      AND EXISTS (
+        SELECT 1 FROM ${slots} JOIN ${resources} ON ${resources.id} = ${slots.resourceId}
+        WHERE ${slots.id} = ${holds.slotId} AND ${withinCancellationCutoff(now)}
+      )
+  `);
+  return result.meta.changes;
+}
+
+/** 會員帳號（Better Auth 的 user）仍存在；確認與其診斷共用，兩處對「會員存在」有同一個定義。 */
+const memberExists = (memberId: string): SQL => sql`EXISTS (SELECT 1 FROM "user" WHERE id = ${memberId})`;
 
 export interface OwnHold {
   id: number;
   slotId: number;
   seats: number;
   status: HoldStatus;
+  /** 只有已取消的訂位有值。 */
+  cancelledAt: number | null;
 }
 
-/** 確認失敗後的唯讀診斷：只讀該會員自己的保留（別人的一律當作不存在）。 */
+/** 確認、取消失敗後的唯讀診斷：只讀該會員自己的保留（別人的、帳號已刪除的一律當作不存在）。 */
 export async function selectOwnHold(
   db: DrizzleD1Database,
   memberId: string,
   holdId: number,
 ): Promise<OwnHold | undefined> {
   const rows = await db
-    .select({ id: holds.id, slotId: holds.slotId, seats: holds.seats, status: holds.status })
+    .select({ id: holds.id, slotId: holds.slotId, seats: holds.seats, status: holds.status, cancelledAt: holds.cancelledAt })
     .from(holds)
-    .where(and(eq(holds.id, holdId), eq(holds.memberId, memberId)))
+    .where(and(eq(holds.id, holdId), eq(holds.memberId, memberId), memberExists(memberId)))
     .limit(1);
   return rows[0];
 }
@@ -203,11 +235,35 @@ export async function selectBookings(db: DrizzleD1Database, memberId: string): P
       resourceName: resources.name,
       startsAt: slots.startsAt,
       endsAt: slots.endsAt,
+      cancellableUntil,
     })
     .from(holds)
     .innerJoin(slots, eq(slots.id, holds.slotId))
     .innerJoin(resources, eq(resources.id, slots.resourceId))
-    .where(and(eq(holds.memberId, memberId), inArray(holds.status, [CONFIRMED, CANCELLED])))
+    .where(
+      and(
+        eq(holds.memberId, memberId),
+        // 會員自己取消的訂位離開列表（#10）；被管理者取消的要讓會員看得到（#12）
+        or(eq(holds.status, CONFIRMED), and(eq(holds.status, CANCELLED), eq(holds.cancelledBy, "admin"))),
+      ),
+    )
     .orderBy(asc(slots.startsAt), asc(holds.id));
   return rows.map((row) => ({ ...row, status: row.status as MyBooking["status"] }));
+}
+
+/** 帳號刪除用：會員未來時段（`starts_at > now`）的訂位改為已取消；已開始時段的是歷史紀錄，不動。回傳 batch 用的語句。 */
+export function cancelFutureBookings(db: DrizzleD1Database, memberId: string, now: number) {
+  const futureSlots = db.select({ id: slots.id }).from(slots).where(gt(slots.startsAt, now));
+  return db
+    .update(holds)
+    .set({ status: CANCELLED })
+    .where(and(eq(holds.memberId, memberId), eq(holds.status, CONFIRMED), inArray(holds.slotId, futureSlots)));
+}
+
+/** 帳號刪除用：會員所有保留中的保留改為已釋放（含已過期尚未清理的）。回傳 batch 用的語句。 */
+export function releaseMemberHolds(db: DrizzleD1Database, memberId: string) {
+  return db
+    .update(holds)
+    .set({ status: RELEASED })
+    .where(and(eq(holds.memberId, memberId), eq(holds.status, HELD)));
 }

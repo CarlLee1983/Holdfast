@@ -22,6 +22,7 @@ export function describeHoldFailure(reason: string): string {
 const CONFIRM_MESSAGES: Record<string, string> = {
   hold_expired: "保留已過期，無法確認，請重新保留",
   hold_not_found: "找不到這筆保留",
+  booking_cancelled: "這筆訂位已取消",
   invalid_input: INVALID_INPUT_MESSAGE,
 };
 
@@ -30,7 +31,18 @@ export function describeConfirmFailure(reason: string): string {
   return describeReason(CONFIRM_MESSAGES, reason, "確認保留");
 }
 
-/** 建立與確認保留共用：輸入有誤是 422，其餘業務拒絕一律是 409。 */
+const CANCEL_MESSAGES: Record<string, string> = {
+  cancellation_cutoff_passed: "已過取消截止時間，無法自行取消",
+  booking_not_found: "找不到這筆訂位",
+  invalid_input: INVALID_INPUT_MESSAGE,
+};
+
+/** 取消訂位失敗的 reason 轉成給會員看的訊息；未知的 reason 不外洩，只寫進 log。 */
+export function describeCancelFailure(reason: string): string {
+  return describeReason(CANCEL_MESSAGES, reason, "取消訂位");
+}
+
+/** 建立、確認與取消共用：輸入有誤是 422，其餘業務拒絕一律是 409。 */
 export function holdFailureStatus(reason: string): 409 | 422 {
   return reason === "invalid_input" ? 422 : 409;
 }

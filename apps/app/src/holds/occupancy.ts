@@ -1,5 +1,5 @@
-import { and, eq, gt, or, sql, type SQL } from "drizzle-orm";
-import { CONFIRMED, HELD, holds } from "./schema";
+import { and, eq, gt, lte, or, sql, type SQL } from "drizzle-orm";
+import { CONFIRMED, HELD, holds, RELEASED } from "./schema";
 
 // 這個檔案是 catalog 與 holds 之間共用的邊界：catalog 的剩餘名額 import 這裡，
 // 所以它只能依賴 holds/schema，不可以 import catalog（否則變成循環相依）。
@@ -9,7 +9,14 @@ export const activeHold = (now: number): SQL =>
   and(eq(holds.status, HELD), gt(holds.expiresAt, now))!;
 
 /**
- * 「占住時段的一筆」唯一的定義：有效保留，或訂位（confirmed 不看到期時間，一直占用到取消（#10）為止）。
+ * 「可丟棄的保留紀錄」唯一的定義：已到期的 held，或已釋放的。刪除時段只會連帶刪掉這些；
+ * 訂位與任何其他狀態（例如日後的已取消）都不可丟棄，會擋住刪除（ADR 0012）。
+ */
+export const discardableHold = (now: number): SQL =>
+  or(and(eq(holds.status, HELD), lte(holds.expiresAt, now)), eq(holds.status, RELEASED))!;
+
+/**
+ * 「占住時段的一筆」唯一的定義：有效保留，或訂位（confirmed 不看到期時間，一直占用到取消為止；cancelled 不算）。
  * 占用名額與會員「同一時段一筆」的規則都用它。
  */
 export const activeHoldOrBooking = (now: number): SQL => or(activeHold(now), eq(holds.status, CONFIRMED))!;

@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "f3199aa4-81c1-4cdc-89dc-17476bb085ad",
-  "prevId": "07946c54-2d63-4f43-aa58-b7b019ea4f26",
+  "id": "addc244f-1ece-4389-94b4-b2e533396963",
+  "prevId": "f3199aa4-81c1-4cdc-89dc-17476bb085ad",
   "tables": {
     "admin_audit": {
       "name": "admin_audit",
@@ -662,6 +662,13 @@
         "cancelled_at": {
           "name": "cancelled_at",
           "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "cancelled_by": {
+          "name": "cancelled_by",
+          "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false

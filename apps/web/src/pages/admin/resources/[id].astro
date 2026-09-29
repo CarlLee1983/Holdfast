@@ -1,8 +1,15 @@
 ---
 import { env } from "cloudflare:workers";
 import { readAccessJwt } from "../../../admin/access-jwt";
-import { formToRecord, resourceFormToInput, slotFormToInput } from "../../../admin/forms";
+import {
+  formToRecord,
+  resourceFormToInput,
+  slotCapacityFormToInput,
+  slotFormToInput,
+  slotIdFormToInput,
+} from "../../../admin/forms";
 import { describeFailure, type Failure } from "../../../admin/reasons";
+import { describeOccupancy } from "../../../admin/slot-occupancy";
 import { formatTaipeiDate, formatTaipeiTime } from "../../../catalog/taipei-time";
 import AccessDenied from "../../../components/AccessDenied.astro";
 import ResourceForm from "../../../components/ResourceForm.astro";
@@ -15,6 +22,7 @@ const resourceId = Number(Astro.params.id);
 
 let resourceFailure: Failure | undefined;
 let slotFailure: Failure | undefined;
+let rowFailure: Failure | undefined;
 let submitted: Record<string, string> = {};
 let notice = "";
 
@@ -31,23 +39,34 @@ if (Astro.request.method === "POST") {
     const result = await env.APP.createSlot(jwt, slotFormToInput(form, resourceId));
     if (result.ok) return Astro.redirect(`/admin/resources/${resourceId}?saved=slot`, 303);
     if (result.reason !== "unauthorized") slotFailure = describeFailure(result);
+  } else if (intent === "update-capacity") {
+    const result = await env.APP.updateSlotCapacity(jwt, slotCapacityFormToInput(form));
+    if (result.ok) return Astro.redirect(`/admin/resources/${resourceId}?saved=capacity`, 303);
+    if (result.reason !== "unauthorized") rowFailure = describeFailure(result);
+  } else if (intent === "delete-slot") {
+    const result = await env.APP.deleteSlot(jwt, slotIdFormToInput(form));
+    if (result.ok) return Astro.redirect(`/admin/resources/${resourceId}?saved=deleted`, 303);
+    if (result.reason !== "unauthorized") rowFailure = describeFailure(result);
   }
 }
 
 const saved = Astro.url.searchParams.get("saved");
 if (saved === "updated") notice = "資源已更新";
 if (saved === "slot") notice = "時段已建立";
+if (saved === "capacity") notice = "容量已更新";
+if (saved === "deleted") notice = "時段已刪除";
 
 const list = await env.APP.listResourcesForAdmin(jwt);
 const unauthorized = !list.ok && list.reason === "unauthorized";
 const resource = list.ok ? list.data.find((r) => r.id === resourceId) : undefined;
-const slots = resource ? await env.APP.listSlots(resourceId) : undefined;
+const slots = resource ? await env.APP.listSlotsForAdmin(jwt, resourceId) : undefined;
 
 if (unauthorized) Astro.response.status = 403;
 else if (!resource) Astro.response.status = 404;
 
 const resourceValues = resourceFailure && submitted.intent === "update-resource" ? submitted : resource;
 const slotValues = slotFailure ? submitted : {};
+const rowFailureSlotId = Number(submitted.slotId);
 const slotErrors = slotFailure?.fields ?? {};
 ---
 
@@ -65,24 +84,53 @@ const slotErrors = slotFailure?.fields ?? {};
         <p>修改保留期限只影響之後建立的保留。</p>
 
         <h2>時段（台北時間）</h2>
-        {slots?.ok && slots.data.length === 0 && <p>目前沒有尚未結束的時段。</p>}
+        {slots?.ok && slots.data.length === 0 && <p>目前沒有時段。</p>}
         {
           slots?.ok && slots.data.length > 0 && (
             <table>
-              <thead><tr><th>日期</th><th>時間</th><th>容量</th><th></th></tr></thead>
+              <thead><tr><th>日期</th><th>時間</th><th>容量</th><th>已占用</th><th>剩餘</th><th>狀態</th><th>操作</th></tr></thead>
               <tbody>
                 {slots.data.map((s) => (
                   <tr>
                     <td>{formatTaipeiDate(s.startsAt)}</td>
                     <td>{formatTaipeiTime(s.startsAt)}–{formatTaipeiTime(s.endsAt)}</td>
                     <td>{s.capacity}</td>
-                    <td><a href={`/admin/slots/${s.id}`}>查看保留與訂位</a></td>
+                    <td>{s.occupied}</td>
+                    <td>{s.remainingSeats}</td>
+                    <td>{describeOccupancy(s)}</td>
+                    <td>
+                      <a href={`/admin/slots/${s.id}`}>查看保留與訂位</a>
+                      <form method="post">
+                        <input type="hidden" name="intent" value="update-capacity" />
+                        <input type="hidden" name="slotId" value={s.id} />
+                        <input
+                          name="capacity"
+                          inputmode="numeric"
+                          aria-label="新容量"
+                          value={rowFailure && rowFailureSlotId === s.id ? (submitted.capacity ?? "") : s.capacity}
+                          required
+                        />
+                        <button type="submit">調整容量</button>
+                      </form>
+                      <form method="post">
+                        <input type="hidden" name="intent" value="delete-slot" />
+                        <input type="hidden" name="slotId" value={s.id} />
+                        <button type="submit">刪除</button>
+                      </form>
+                      {rowFailure && rowFailureSlotId === s.id && (
+                        <>
+                          <p class="error" role="alert">{rowFailure.message}</p>
+                          {rowFailure.fields.capacity?.map((m) => <span class="error">{m}</span>)}
+                        </>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           )
         }
+        <p>容量可調到低於已占用：既有的保留與訂位不受影響，但超占的時段不再接受新的保留。</p>
         <h3>建立時段</h3>
         <form method="post">
           <input type="hidden" name="intent" value="create-slot" />
