@@ -13,7 +13,7 @@ describe("handleCancelBookingPost", () => {
     const app = fakeApp({ ok: true, data: { id: 23, slotId: 7, seats: 2 } });
 
     expect(await run(app)).toEqual({ redirect: "/admin/slots/7?cancelled=23", status: 303 });
-    expect(app.cancelBookingForAdmin).toHaveBeenCalledWith("access-jwt", { bookingId: 23 });
+    expect(app.cancelBookingForAdmin).toHaveBeenCalledWith("access-jwt", { slotId: 7, bookingId: 23 });
   });
 
   it.each([
@@ -33,7 +33,7 @@ describe("handleCancelBookingPost", () => {
       error: "輸入有誤，請修正後再送出：訂位編號無效",
       status: 422,
     });
-    expect(app.cancelBookingForAdmin).toHaveBeenCalledWith("access-jwt", { bookingId: Number.NaN });
+    expect(app.cancelBookingForAdmin).toHaveBeenCalledWith("access-jwt", { slotId: 7, bookingId: Number.NaN });
   });
 
   it("非表單 body 回 422，不呼叫 App", async () => {
