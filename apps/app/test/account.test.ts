@@ -129,6 +129,21 @@ describe("deleteAccount", () => {
     expect(await statusOf(id)).toBe("confirmed");
   });
 
+  it("先落地的寫入把有效時間推過時段開始時間後，帶開始前請求時間的刪除不取消該訂位（ADR 0011）", async () => {
+    const alice = await signUp("g-alice");
+    const bob = await signUp("g-bob");
+    const id = await confirmed(alice.memberId, 1, "a");
+    const laterSlot = await insertSlot(resourceId, NOW + 3 * HOUR, NOW + 4 * HOUR, 10);
+    setNow(NOW + HOUR);
+    await book(bob.memberId, 1, "push", laterSlot);
+
+    setNow(NOW + HOUR - 1);
+    const result = await app.deleteAccount(alice.memberId);
+
+    expect(result).toEqual({ ok: true, data: { cancelledBookings: 0, releasedHolds: 0 } });
+    expect(await statusOf(id)).toBe("confirmed");
+  });
+
   it("其他會員的訂位、保留與登入資料不受影響", async () => {
     const alice = await signUp("g-alice");
     const bob = await signUp("g-bob");

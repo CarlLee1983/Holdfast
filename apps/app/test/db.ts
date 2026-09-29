@@ -15,6 +15,8 @@ export async function resetDb(): Promise<void> {
     env.DB.prepare("DELETE FROM holds"),
     env.DB.prepare("DELETE FROM slots"),
     env.DB.prepare("DELETE FROM resources"),
+    // 高水位只增不減；測試之間時間會倒退，所以要清空（ADR 0011）
+    env.DB.prepare("DELETE FROM clock"),
   ]);
 }
 

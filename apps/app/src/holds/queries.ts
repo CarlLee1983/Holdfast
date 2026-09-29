@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, inArray, lte, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, or, sql, type SQL } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { resources, slots } from "../catalog/schema";
 import {
@@ -7,17 +7,21 @@ import {
   memberActiveInSlot,
 } from "./member-rules";
 import { cancellableUntil, withinCancellationCutoff } from "./cancellation";
-import { activeHold, occupiedSeats } from "./occupancy";
+import { activeHold, expiredHold, occupiedSeats } from "./occupancy";
+import { effectiveNow, writeAtEffectiveNow, type BumpedWriteResult } from "../shared/high-water-mark";
 import { CANCELLED, CONFIRMED, HELD, holds, RELEASED, type HoldStatus } from "./schema";
 
-/** 只清理到期且仍為 held 的保留；條件更新使重送與確認後晚到的釋放皆為 no-op。 */
-export async function releaseExpiredHolds(db: DrizzleD1Database, now: number): Promise<number> {
-  const result = await db
-    .update(holds)
-    .set({ status: RELEASED })
-    .where(and(eq(holds.status, HELD), lte(holds.expiresAt, now)))
-    .run();
-  return result.meta.changes;
+/**
+ * 只清理到期且仍為 held 的保留；條件更新使重送與確認後晚到的釋放皆為 no-op。
+ * 到期以高水位的有效時間判定（ADR 0011），`now` 只用來推進高水位。
+ */
+export async function releaseExpiredHolds(d1: D1Database, now: number): Promise<number> {
+  const { changes } = await writeAtEffectiveNow(
+    d1,
+    now,
+    sql`UPDATE holds SET status = ${RELEASED} WHERE ${expiredHold(effectiveNow)}`,
+  );
+  return changes;
 }
 
 /** 保留與訂位共有的欄位；訂位就是已確認的保留，沿用保留的 id。 */
@@ -60,27 +64,31 @@ export interface HoldRequest {
  * 保留期限在語句內從資源讀出，所以修改期限只影響之後的保留。
  * 會員層級的兩條規則（同時段不重複、有效保留不超過上限）也在這句裡，不另設檢查步驟。
  * 冪等鍵重複（同會員同鍵）時 `ON CONFLICT DO NOTHING`，changes 為 0，由呼叫端診斷。
- * 回傳 `changes`（1 = 已寫入）。
+ * 語句裡的時間一律是高水位的有效時間（ADR 0011），`now` 只用來推進高水位。
+ * 回傳 `changes`（1 = 已寫入）與寫入採用的有效時間（失敗後診斷用）。
  */
 export async function insertHoldIfAvailable(
-  db: DrizzleD1Database,
+  d1: D1Database,
   request: HoldRequest,
   now: number,
-): Promise<number> {
+): Promise<BumpedWriteResult> {
   const { memberId, slotId, seats, idempotencyKey } = request;
-  const result = await db.run(sql`
+  return writeAtEffectiveNow(
+    d1,
+    now,
+    sql`
     INSERT INTO holds (slot_id, member_id, seats, status, expires_at, idempotency_key, created_at)
-    SELECT s.id, ${memberId}, ${seats}, ${HELD}, ${now} + r.hold_ttl_seconds * 1000, ${idempotencyKey}, ${now}
+    SELECT s.id, ${memberId}, ${seats}, ${HELD}, ${effectiveNow} + r.hold_ttl_seconds * 1000, ${idempotencyKey}, ${effectiveNow}
     FROM slots s JOIN resources r ON r.id = s.resource_id
     WHERE s.id = ${slotId}
-      AND s.starts_at > ${now}
+      AND s.starts_at > ${effectiveNow}
       AND ${seats} <= r.seats_per_hold
-      AND NOT ${memberActiveInSlot(memberId, sql`s.id`, now)}
-      AND ${memberActiveHoldCount(memberId, now)} < ${MAX_ACTIVE_HOLDS_PER_MEMBER}
-      AND ${occupiedSeats(sql`s.id`, now)} + ${seats} <= s.capacity
+      AND NOT ${memberActiveInSlot(memberId, sql`s.id`, effectiveNow)}
+      AND ${memberActiveHoldCount(memberId, effectiveNow)} < ${MAX_ACTIVE_HOLDS_PER_MEMBER}
+      AND ${occupiedSeats(sql`s.id`, effectiveNow)} + ${seats} <= s.capacity
     ON CONFLICT (member_id, idempotency_key) DO NOTHING
-  `);
-  return result.meta.changes;
+  `,
+  );
 }
 
 const holdColumns = {
@@ -158,42 +166,52 @@ export async function selectActiveHolds(
 /**
  * 確認的單一條件寫入（ADR 0003、0004）：保留屬於該會員、狀態為保留中、且 `now < expires_at`。
  * 會員帳號必須仍存在，避免與帳號刪除交錯後留下屬於已刪除會員、永久占名額的訂位。
+ * 語句裡的時間是高水位的有效時間（ADR 0011），`now` 只用來推進高水位。
  * 成敗看 `meta.changes`；釋放有沒有跑不參與判定。回傳 `changes`（1 = 已確認）。
  */
 export async function confirmHoldIfActive(
-  db: DrizzleD1Database,
+  d1: D1Database,
   memberId: string,
   holdId: number,
   now: number,
 ): Promise<number> {
-  const result = await db.run(sql`
+  const { changes } = await writeAtEffectiveNow(
+    d1,
+    now,
+    sql`
     UPDATE holds SET status = ${CONFIRMED}
-    WHERE id = ${holdId} AND member_id = ${memberId} AND ${activeHold(now)}
+    WHERE id = ${holdId} AND member_id = ${memberId} AND ${activeHold(effectiveNow)}
       AND ${memberExists(memberId)}
-  `);
-  return result.meta.changes;
+  `,
+  );
+  return changes;
 }
 
 /**
  * 取消的單一條件寫入（ADR 0004）：訂位屬於該會員、狀態為 confirmed、且仍在取消截止時刻內
  * （定義見 `withinCancellationCutoff`，用資源目前的設定，不做快照）。
+ * 語句裡的時間（截止判定與寫下的 `cancelled_at`）是高水位的有效時間（ADR 0011），`now` 只用來推進高水位。
  * 成敗看 `meta.changes`；已取消的重送 changes 為 0，由呼叫端診斷。回傳 `changes`（1 = 已取消）。
  */
 export async function cancelBookingIfBeforeCutoff(
-  db: DrizzleD1Database,
+  d1: D1Database,
   memberId: string,
   bookingId: number,
   now: number,
 ): Promise<number> {
-  const result = await db.run(sql`
-    UPDATE holds SET status = ${CANCELLED}, cancelled_at = ${now}, cancelled_by = 'member'
+  const { changes } = await writeAtEffectiveNow(
+    d1,
+    now,
+    sql`
+    UPDATE holds SET status = ${CANCELLED}, cancelled_at = ${effectiveNow}, cancelled_by = 'member'
     WHERE id = ${bookingId} AND member_id = ${memberId} AND status = ${CONFIRMED}
       AND EXISTS (
         SELECT 1 FROM ${slots} JOIN ${resources} ON ${resources.id} = ${slots.resourceId}
-        WHERE ${slots.id} = ${holds.slotId} AND ${withinCancellationCutoff(now)}
+        WHERE ${slots.id} = ${holds.slotId} AND ${withinCancellationCutoff(effectiveNow)}
       )
-  `);
-  return result.meta.changes;
+  `,
+  );
+  return changes;
 }
 
 /** 會員帳號（Better Auth 的 user）仍存在；確認與其診斷共用，兩處對「會員存在」有同一個定義。 */
@@ -251,9 +269,12 @@ export async function selectBookings(db: DrizzleD1Database, memberId: string): P
   return rows.map((row) => ({ ...row, status: row.status as MyBooking["status"] }));
 }
 
-/** 帳號刪除用：會員未來時段（`starts_at > now`）的訂位改為已取消；已開始時段的是歷史紀錄，不動。回傳 batch 用的語句。 */
-export function cancelFutureBookings(db: DrizzleD1Database, memberId: string, now: number) {
-  const futureSlots = db.select({ id: slots.id }).from(slots).where(gt(slots.startsAt, now));
+/**
+ * 帳號刪除用：會員未來時段（`starts_at > 有效時間`）的訂位改為已取消；已開始時段的是歷史紀錄，不動。回傳 batch 用的語句。
+ * 時間是高水位的有效時間，必須放進 `batchAtEffectiveNow` 執行（ADR 0011）。
+ */
+export function cancelFutureBookings(db: DrizzleD1Database, memberId: string) {
+  const futureSlots = db.select({ id: slots.id }).from(slots).where(gt(slots.startsAt, effectiveNow));
   return db
     .update(holds)
     .set({ status: CANCELLED })

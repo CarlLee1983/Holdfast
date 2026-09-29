@@ -103,6 +103,35 @@ describe("cancelBooking", () => {
     expect((await bookings("m3")).map((x) => x.id)).toEqual([c]);
   });
 
+  it("先落地的寫入把有效時間推過截止時刻後，帶截止前請求時間的取消被拒（ADR 0011）", async () => {
+    const id = await book("m1", "k");
+    const laterSlot = await insertSlot(resourceId, STARTS_AT + 5 * HOUR, STARTS_AT + 6 * HOUR, 10);
+    setNow(CUTOFF + 1);
+    expect((await app.createHold("m2", { slotId: laterSlot, seats: 1, idempotencyKey: "push" })).ok).toBe(true);
+
+    setNow(CUTOFF);
+
+    expect(await app.cancelBooking("m1", { bookingId: id })).toEqual({
+      ok: false,
+      reason: "cancellation_cutoff_passed",
+    });
+    expect((await bookings("m1")).map((x) => x.id)).toEqual([id]);
+  });
+
+  it("先落地的寫入把有效時間推到較晚（仍在截止前）後，取消寫下的 cancelledAt 是有效時間而非請求時間", async () => {
+    const id = await book("m1", "k");
+    const laterSlot = await insertSlot(resourceId, STARTS_AT + 5 * HOUR, STARTS_AT + 6 * HOUR, 10);
+    setNow(NOW + 2000);
+    expect((await app.createHold("m2", { slotId: laterSlot, seats: 1, idempotencyKey: "push" })).ok).toBe(true);
+
+    setNow(NOW + 1000);
+
+    expect(await app.cancelBooking("m1", { bookingId: id })).toMatchObject({
+      ok: true,
+      data: { cancelledAt: NOW + 2000 },
+    });
+  });
+
   it("使用資源目前的取消截止設定（不做快照）", async () => {
     const id = await book("m1", "k");
     const updated = await app.updateResource(await mintAccessJwt(), {

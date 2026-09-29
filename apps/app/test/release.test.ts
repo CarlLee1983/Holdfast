@@ -77,6 +77,26 @@ describe("releaseExpiredHolds", () => {
     expect(await status(released)).toBe("released");
   });
 
+  it("釋放先落地、帶到期前時間的確認晚到：確認不成立，保留維持已釋放（ADR 0011）", async () => {
+    const id = await createHold("m1", "a");
+    setNow(NOW + TTL);
+    expect(await app.releaseExpiredHolds()).toEqual({ ok: true, data: { releasedCount: 1 } });
+
+    setNow(NOW + TTL - 1);
+    expect(await app.confirmHold("m1", { holdId: id })).toEqual({ ok: false, reason: "hold_expired" });
+    expect(await status(id)).toBe("released");
+  });
+
+  it("別的寫入已把時間推過到期，帶較早時間的釋放晚到：仍依有效時間釋放該保留（ADR 0011）", async () => {
+    const id = await createHold("m1", "a");
+    setNow(NOW + TTL);
+    await createHold("m2", "b");
+
+    setNow(NOW + TTL - 1);
+    expect(await app.releaseExpiredHolds()).toEqual({ ok: true, data: { releasedCount: 1 } });
+    expect(await status(id)).toBe("released");
+  });
+
   it("scheduled event invokes the release method", async () => {
     const expired = await createHold("m1", "cron");
     setNow(NOW + TTL);
