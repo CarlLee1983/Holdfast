@@ -2,13 +2,14 @@ import { drizzle } from "drizzle-orm/d1";
 import type { Clock } from "../shared/clock";
 import { fail, ok, type InvalidInput, type Result } from "../shared/result";
 import { parseInput } from "../shared/input";
+import { MAX_ACTIVE_HOLDS_PER_MEMBER } from "./member-rules";
 import { createHoldInput, memberIdInput } from "./input";
 import {
   insertHoldIfAvailable,
   releaseExpiredHolds,
   selectActiveHolds,
   selectHoldByKey,
-  selectSlotDiagnosis,
+  selectHoldDiagnosis,
   type HoldRecord,
   type HoldRequest,
   type MyHold,
@@ -20,6 +21,8 @@ export type CreateHoldResult =
       | "idempotency_key_conflict"
       | "slot_not_found"
       | "slot_started"
+      | "already_in_slot"
+      | "active_hold_limit_reached"
       | "seats_per_hold_exceeded"
       | "slot_overcommitted"
       | "insufficient_seats"
@@ -40,9 +43,11 @@ export function createHoldService(d1: D1Database, clock: Clock) {
         ? ok(existing)
         : fail("idempotency_key_conflict");
     }
-    const slot = await selectSlotDiagnosis(db, request.slotId, now);
+    const slot = await selectHoldDiagnosis(db, request.memberId, request.slotId, now);
     if (!slot) return fail("slot_not_found");
     if (slot.startsAt <= now) return fail("slot_started");
+    if (slot.memberInSlot) return fail("already_in_slot");
+    if (slot.memberActiveHolds >= MAX_ACTIVE_HOLDS_PER_MEMBER) return fail("active_hold_limit_reached");
     if (request.seats > slot.seatsPerHold) return fail("seats_per_hold_exceeded");
     if (slot.occupied > slot.capacity) return fail("slot_overcommitted");
     return fail("insufficient_seats");

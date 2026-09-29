@@ -1,6 +1,11 @@
 import { and, asc, eq, lte, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { resources, slots } from "../catalog/schema";
+import {
+  MAX_ACTIVE_HOLDS_PER_MEMBER,
+  memberActiveHoldCount,
+  memberActiveInSlot,
+} from "./member-rules";
 import { activeHold, HELD, occupiedSeats } from "./occupancy";
 import { holds, RELEASED } from "./schema";
 
@@ -37,6 +42,7 @@ export interface HoldRequest {
 /**
  * 建立保留的單一條件寫入（ADR 0004）：檢查與寫入在同一句，成敗看 `meta.changes`。
  * 保留期限在語句內從資源讀出，所以修改期限只影響之後的保留。
+ * 會員層級的兩條規則（同時段不重複、有效保留不超過上限）也在這句裡，不另設檢查步驟。
  * 冪等鍵重複（同會員同鍵）時 `ON CONFLICT DO NOTHING`，changes 為 0，由呼叫端診斷。
  * 回傳 `changes`（1 = 已寫入）。
  */
@@ -53,6 +59,8 @@ export async function insertHoldIfAvailable(
     WHERE s.id = ${slotId}
       AND s.starts_at > ${now}
       AND ${seats} <= r.seats_per_hold
+      AND NOT ${memberActiveInSlot(memberId, sql`s.id`, now)}
+      AND ${memberActiveHoldCount(memberId, now)} < ${MAX_ACTIVE_HOLDS_PER_MEMBER}
       AND ${occupiedSeats(sql`s.id`, now)} + ${seats} <= s.capacity
     ON CONFLICT (member_id, idempotency_key) DO NOTHING
   `);
@@ -79,25 +87,30 @@ export async function selectHoldByKey(
   return rows[0];
 }
 
-export interface SlotDiagnosis {
+export interface HoldDiagnosis {
   startsAt: number;
   capacity: number;
   seatsPerHold: number;
   occupied: number;
+  memberInSlot: boolean;
+  memberActiveHolds: number;
 }
 
-/** 條件寫入失敗後的唯讀診斷：只用來決定回哪個 reason，不影響正確性。時段不存在回 undefined。 */
-export async function selectSlotDiagnosis(
+/** 條件寫入失敗後的唯讀診斷（時段與會員兩面，一次查詢）：只用來決定回哪個 reason，不影響正確性。時段不存在回 undefined。 */
+export async function selectHoldDiagnosis(
   db: DrizzleD1Database,
+  memberId: string,
   slotId: number,
   now: number,
-): Promise<SlotDiagnosis | undefined> {
+): Promise<HoldDiagnosis | undefined> {
   const rows = await db
     .select({
       startsAt: slots.startsAt,
       capacity: slots.capacity,
       seatsPerHold: resources.seatsPerHold,
       occupied: occupiedSeats(sql`${slots.id}`, now).as("occupied"),
+      memberInSlot: memberActiveInSlot(memberId, sql`${slots.id}`, now).mapWith(Boolean).as("member_in_slot"),
+      memberActiveHolds: memberActiveHoldCount(memberId, now).as("member_active_holds"),
     })
     .from(slots)
     .innerJoin(resources, eq(resources.id, slots.resourceId))
