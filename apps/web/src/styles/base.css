@@ -120,7 +120,3 @@ th { color: var(--muted-foreground); font-weight: 500; }
     padding-inline: var(--space-6);
   }
 }
-
-/* 暫時：表格在窄螢幕上不撐破版面，改為容器內橫向捲動。
-   #41（首頁）與 #42（/me）改成卡片後刪除這條 */
-main { overflow-x: auto; }

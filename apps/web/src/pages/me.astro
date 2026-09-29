@@ -54,38 +54,40 @@ const formatDateTime = (epochMs: number) => `${formatTaipeiDate(epochMs)} ${form
     holds.length === 0 ? (
       <p>目前沒有有效的保留</p>
     ) : (
-      <table>
-        <thead>
-          <tr>
-            <th>資源</th>
-            <th>日期</th>
-            <th>時間</th>
-            <th>名額</th>
-            <th>到期時間</th>
-            <th>確認</th>
-          </tr>
-        </thead>
-        <tbody>
-          {holds.map((hold) => (
+      <div class="scroll">
+        <table>
+          <thead>
             <tr>
-              <td>{hold.resourceName}</td>
-              <td>{formatTaipeiDate(hold.startsAt)}</td>
-              <td>
-                {formatTaipeiTime(hold.startsAt)}–{formatTaipeiTime(hold.endsAt)}
-              </td>
-              <td>{hold.seats}</td>
-              <td>{formatDateTime(hold.expiresAt)}</td>
-              <td>
-                <form method="post">
-                  <input type="hidden" name="intent" value={CONFIRM_INTENT} />
-                  <input type="hidden" name="holdId" value={hold.id} />
-                  <button type="submit">確認訂位</button>
-                </form>
-              </td>
+              <th>資源</th>
+              <th>日期</th>
+              <th>時間</th>
+              <th>名額</th>
+              <th>到期時間</th>
+              <th>確認</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {holds.map((hold) => (
+              <tr>
+                <td>{hold.resourceName}</td>
+                <td>{formatTaipeiDate(hold.startsAt)}</td>
+                <td>
+                  {formatTaipeiTime(hold.startsAt)}–{formatTaipeiTime(hold.endsAt)}
+                </td>
+                <td>{hold.seats}</td>
+                <td>{formatDateTime(hold.expiresAt)}</td>
+                <td>
+                  <form method="post">
+                    <input type="hidden" name="intent" value={CONFIRM_INTENT} />
+                    <input type="hidden" name="holdId" value={hold.id} />
+                    <button type="submit">確認訂位</button>
+                  </form>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     )
   }
   <h2>我的訂位</h2>
@@ -93,46 +95,56 @@ const formatDateTime = (epochMs: number) => `${formatTaipeiDate(epochMs)} ${form
     bookings.length === 0 ? (
       <p>目前沒有訂位</p>
     ) : (
-      <table>
-        <thead>
-          <tr>
-            <th>資源</th>
-            <th>日期</th>
-            <th>時間</th>
-            <th>名額</th>
-            <th>狀態</th>
-            <th>取消截止時間</th>
-            <th>取消</th>
-          </tr>
-        </thead>
-        <tbody>
-          {bookings.map((booking) => (
+      <div class="scroll">
+        <table>
+          <thead>
             <tr>
-              <td>{booking.resourceName}</td>
-              <td>{formatTaipeiDate(booking.startsAt)}</td>
-              <td>
-                {formatTaipeiTime(booking.startsAt)}–{formatTaipeiTime(booking.endsAt)}
-              </td>
-              <td>{booking.seats}</td>
-              <td>{holdOrBookingStatus(booking)}</td>
-              <td>{formatDateTime(booking.cancellableUntil)}</td>
-              <td>
-                {booking.status !== "confirmed" ? null : now <= booking.cancellableUntil ? (
-                  <form method="post">
-                    <input type="hidden" name="intent" value={CANCEL_INTENT} />
-                    <input type="hidden" name="bookingId" value={booking.id} />
-                    <button type="submit">取消訂位</button>
-                  </form>
-                ) : (
-                  "已過取消截止時間"
-                )}
-              </td>
+              <th>資源</th>
+              <th>日期</th>
+              <th>時間</th>
+              <th>名額</th>
+              <th>狀態</th>
+              <th>取消截止時間</th>
+              <th>取消</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {bookings.map((booking) => (
+              <tr>
+                <td>{booking.resourceName}</td>
+                <td>{formatTaipeiDate(booking.startsAt)}</td>
+                <td>
+                  {formatTaipeiTime(booking.startsAt)}–{formatTaipeiTime(booking.endsAt)}
+                </td>
+                <td>{booking.seats}</td>
+                <td>{holdOrBookingStatus(booking)}</td>
+                <td>{formatDateTime(booking.cancellableUntil)}</td>
+                <td>
+                  {booking.status !== "confirmed" ? null : now <= booking.cancellableUntil ? (
+                    <form method="post">
+                      <input type="hidden" name="intent" value={CANCEL_INTENT} />
+                      <input type="hidden" name="bookingId" value={booking.id} />
+                      <button type="submit">取消訂位</button>
+                    </form>
+                  ) : (
+                    "已過取消截止時間"
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     )
   }
   <h2>帳號</h2>
   <p><a href="/account/delete">刪除我的帳號</a></p>
 </MemberLayout>
+
+<style>
+  /* 暫時：/me 仍是表格，窄螢幕上不撐破整頁，改在容器內橫向捲動。
+     #42 把 /me 改成卡片後刪除這段與 .scroll 容器 */
+  .scroll {
+    overflow-x: auto;
+  }
+</style>
