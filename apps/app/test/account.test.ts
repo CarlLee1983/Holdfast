@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { setNow } from "./clock";
 import { insertResource, insertSlot, resetDb } from "./db";
 import { loginWith } from "./oauth-stub";
+import { mintAccessJwt } from "./access";
 
 const HOUR = 3_600_000;
 const NOW = Date.UTC(2030, 0, 1);
@@ -77,6 +78,22 @@ describe("deleteAccount", () => {
     expect(await statusOf(id)).toBe("cancelled");
     expect(await remaining()).toBe(10);
     expect(await app.listMyBookings(alice.memberId)).toEqual({ ok: true, data: [] });
+  });
+
+  it("被取消的訂位記下取消時間與取消者（會員），管理者看得到（#32）", async () => {
+    const alice = await signUp("g-alice");
+    const id = await confirmed(alice.memberId, 3, "a");
+    setNow(NOW + 1000);
+
+    await app.deleteAccount(alice.memberId);
+
+    const listed = await app.listSlotHoldsAndBookingsForAdmin(await mintAccessJwt(), { slotId });
+    if (!listed.ok) throw new Error(listed.reason);
+    expect(listed.data.holdsAndBookings.find((h) => h.id === id)).toMatchObject({
+      status: "cancelled",
+      cancelledAt: NOW + 1000,
+      cancelledBy: "member",
+    });
   });
 
   it("有效保留變已釋放，名額立即歸還", async () => {
