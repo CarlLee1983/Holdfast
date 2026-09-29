@@ -1,4 +1,5 @@
 import { loginUrl } from "../auth/member";
+import { withFirstFieldDetail } from "../shared/reasons";
 import { toNumber } from "../shared/form-values";
 import { describeConfirmFailure, holdFailureStatus } from "./reasons";
 
@@ -32,10 +33,7 @@ export async function handleConfirmPost({
   const result = await app.confirmHold(member.memberId, { holdId: toNumber(form.get("holdId")) });
   if (result.ok) return { redirect: `/me?confirmed=${result.data.id}`, status: 303 };
 
-  let error = describeConfirmFailure(result.reason);
-  if (result.reason === "invalid_input") {
-    const detail = Object.values(result.fields).flat()[0];
-    if (detail) error = `${error}：${detail}`;
-  }
+  const message = describeConfirmFailure(result.reason);
+  const error = result.reason === "invalid_input" ? withFirstFieldDetail(message, result.fields) : message;
   return { error, status: holdFailureStatus(result.reason) };
 }

@@ -1,34 +1,30 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { resources, slots } from "../catalog/schema";
-import { activeHold, HELD, occupiedSeats } from "./occupancy";
-import { CONFIRMED, holds } from "./schema";
+import { activeHold, occupiedSeats } from "./occupancy";
+import { CONFIRMED, HELD, holds, type HoldStatus } from "./schema";
 
-export interface HoldRecord {
-  id: number;
-  slotId: number;
-  seats: number;
-  expiresAt: number;
-}
-
-export interface MyHold extends HoldRecord {
-  resourceName: string;
-  startsAt: number;
-  endsAt: number;
-}
-
-/** 訂位就是已確認的保留：沿用保留的 id。 */
+/** 保留與訂位共有的欄位；訂位就是已確認的保留，沿用保留的 id。 */
 export interface BookingRecord {
   id: number;
   slotId: number;
   seats: number;
 }
 
-export interface MyBooking extends BookingRecord {
+export interface HoldRecord extends BookingRecord {
+  expiresAt: number;
+}
+
+/** 列表用：資源名稱與時段時間。 */
+export interface SlotSummary {
   resourceName: string;
   startsAt: number;
   endsAt: number;
 }
+
+export interface MyHold extends HoldRecord, SlotSummary {}
+
+export interface MyBooking extends BookingRecord, SlotSummary {}
 
 export interface HoldRequest {
   memberId: string;
@@ -150,7 +146,7 @@ export interface OwnHold {
   id: number;
   slotId: number;
   seats: number;
-  status: string;
+  status: HoldStatus;
 }
 
 /** 確認失敗後的唯讀診斷：只讀該會員自己的保留（別人的一律當作不存在）。 */

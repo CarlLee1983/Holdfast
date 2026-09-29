@@ -17,7 +17,7 @@ import {
   type MyBooking,
   type MyHold,
 } from "./queries";
-import { CONFIRMED } from "./schema";
+import { CONFIRMED, HELD } from "./schema";
 
 export type CreateHoldResult =
   | Result<
@@ -103,9 +103,19 @@ export function createHoldService(d1: D1Database, clock: Clock) {
       if (changes === 1) {
         console.log(JSON.stringify({ event: "hold_confirmed", holdId, slotId: own.slotId, seats: own.seats }));
       }
-      // 已確認：重複確認回同一筆訂位（冪等）；其餘（保留中但沒寫進去）就是已到期
-      if (own.status === CONFIRMED) return ok({ id: own.id, slotId: own.slotId, seats: own.seats });
-      return fail("hold_expired");
+      // 新增狀態時這裡會編譯失敗，必須決定該回哪個 reason
+      switch (own.status) {
+        case CONFIRMED:
+          // 重複確認回同一筆訂位（冪等）
+          return ok({ id: own.id, slotId: own.slotId, seats: own.seats });
+        case HELD:
+          // 保留中卻沒寫進去，就是已到期
+          return fail("hold_expired");
+        default: {
+          const unhandled: never = own.status;
+          throw new Error(`未處理的保留狀態：${String(unhandled)}`);
+        }
+      }
     },
 
     async listMyBookings(memberId: unknown): Promise<ListMyBookingsResult> {

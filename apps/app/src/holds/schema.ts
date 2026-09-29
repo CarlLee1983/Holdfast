@@ -5,10 +5,13 @@ import { slots } from "../catalog/schema";
  * 保留（Hold）：會員在期限內暫時占住的名額。時間欄位一律是 UTC epoch 毫秒。
  * 過期只由 `expires_at > now` 判斷，不靠改 `status`（ADR 0003）；之後的釋放只負責整理。
  */
-/** 保留仍占著名額時的狀態；定義在這裡（occupancy 也 import 本檔），由 occupancy 對外再匯出。 */
+/** 保留仍占著名額時的狀態。狀態常數與 `HoldStatus` 只從本檔匯出，其他檔案一律從這裡 import。 */
 export const HELD = "held";
 /** 已確認的訂位（Booking）：與保留同一張表、同一個 id，只是狀態不同；不再看 `expires_at`。 */
 export const CONFIRMED = "confirmed";
+
+/** 所有狀態的聯集；#9、#10 新增狀態時加在這裡，依此做窮盡檢查的地方會編譯失敗。 */
+export type HoldStatus = typeof HELD | typeof CONFIRMED;
 
 export const holds = sqliteTable(
   "holds",
@@ -21,7 +24,7 @@ export const holds = sqliteTable(
     memberId: text("member_id").notNull(),
     seats: integer("seats").notNull(),
     /** `held` 或 `confirmed`；#9 會加入 `released`。 */
-    status: text("status").notNull().default(HELD),
+    status: text("status").$type<HoldStatus>().notNull().default(HELD),
     expiresAt: integer("expires_at").notNull(),
     idempotencyKey: text("idempotency_key").notNull(),
     /** 來自 Clock，不用 SQL 預設值，測試才能控制時間。 */

@@ -42,7 +42,8 @@ const formatDateTime = (epochMs: number) => `${formatTaipeiDate(epochMs)} ${form
     <title>我的保留與訂位 | Holdfast 訂位</title>
   </head>
   <body>
-    <h1>我的保留</h1>
+    <h1>我的保留與訂位</h1>
+    <h2>我的保留</h2>
     <p><a href="/">回到時段列表</a>　時間皆為台北時間。</p>
     {confirmError && <p role="alert">{confirmError}</p>}
     {confirmedId !== null && bookings.some((b) => String(b.id) === confirmedId) && <p role="status">訂位成功</p>}
@@ -85,7 +86,7 @@ const formatDateTime = (epochMs: number) => `${formatTaipeiDate(epochMs)} ${form
         </table>
       )
     }
-    <h1>我的訂位</h1>
+    <h2>我的訂位</h2>
     {
       bookings.length === 0 ? (
         <p>目前沒有訂位</p>
