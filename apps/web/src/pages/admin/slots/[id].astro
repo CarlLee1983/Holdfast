@@ -1,0 +1,88 @@
+---
+import { env } from "cloudflare:workers";
+import { readAccessJwt } from "../../../admin/access-jwt";
+import { handleCancelBookingPost } from "../../../admin/cancel-booking";
+import { memberIdentity } from "../../../admin/slot-holds-and-bookings";
+import { holdOrBookingStatus } from "../../../shared/booking-status";
+import { formatTaipeiDate, formatTaipeiTime } from "../../../catalog/taipei-time";
+import AccessDenied from "../../../components/AccessDenied.astro";
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+
+export const prerender = false;
+
+const jwt = readAccessJwt(Astro.request, env, import.meta.env.DEV);
+const rawId = Astro.params.id ?? "";
+const slotId = /^\d+$/.test(rawId) ? Number(rawId) : Number.NaN;
+const validSlotId = Number.isSafeInteger(slotId) && slotId > 0;
+let cancelError = "";
+let unauthorized = false;
+
+if (validSlotId && Astro.request.method === "POST") {
+  const outcome = await handleCancelBookingPost({ jwt, request: Astro.request, app: env.APP, slotId });
+  if ("redirect" in outcome) return Astro.redirect(outcome.redirect, outcome.status);
+  cancelError = outcome.error;
+  unauthorized = outcome.status === 403;
+  Astro.response.status = outcome.status;
+}
+
+const result = validSlotId && !unauthorized
+  ? await env.APP.listSlotHoldsAndBookingsForAdmin(jwt, { slotId })
+  : null;
+unauthorized ||= result !== null && !result.ok && result.reason === "unauthorized";
+if (unauthorized) Astro.response.status = 403;
+else if (!validSlotId || (result && !result.ok && result.reason === "slot_not_found")) Astro.response.status = 404;
+else if (result && !result.ok && result.reason === "invalid_input") Astro.response.status = 422;
+
+const slot = result?.ok ? result.data.slot : null;
+const holdsAndBookings = result?.ok ? result.data.holdsAndBookings : [];
+const cancelledId = Astro.url.searchParams.get("cancelled");
+const cancelled = cancelledId !== null && holdsAndBookings.some((r) => String(r.id) === cancelledId && r.status === "cancelled");
+const formatDateTime = (time: number) => `${formatTaipeiDate(time)} ${formatTaipeiTime(time)}`;
+---
+
+<AdminLayout title={slot ? `${slot.resourceName}・時段` : "時段保留與訂位"}>
+  {
+    unauthorized ? (
+      <AccessDenied />
+    ) : !slot ? (
+      <p class="error" role="alert">找不到這個時段。</p>
+    ) : (
+      <>
+        <p><a href={`/admin/resources/${slot.resourceId}`}>回到資源</a></p>
+        <p>{formatTaipeiDate(slot.startsAt)} {formatTaipeiTime(slot.startsAt)}–{formatTaipeiTime(slot.endsAt)}・容量 {slot.capacity}</p>
+        {cancelled && <p class="notice" role="status">訂位已取消，名額已歸還。</p>}
+        {cancelError && <p class="error" role="alert">{cancelError}</p>}
+        <h2>保留與訂位</h2>
+        {holdsAndBookings.length === 0 ? (
+          <p>這個時段沒有保留或訂位。</p>
+        ) : (
+          <table>
+            <thead>
+              <tr><th>會員</th><th>Email</th><th>名額</th><th>狀態</th><th>建立時間</th><th>到期時間</th><th>操作</th></tr>
+            </thead>
+            <tbody>
+              {holdsAndBookings.map((holdOrBooking) => (
+                <tr>
+                  <td>{memberIdentity(holdOrBooking)}</td>
+                  <td>{holdOrBooking.memberEmail ?? "—"}</td>
+                  <td>{holdOrBooking.seats}</td>
+                  <td>{holdOrBookingStatus(holdOrBooking)}</td>
+                  <td>{formatDateTime(holdOrBooking.createdAt)}</td>
+                  <td>{formatDateTime(holdOrBooking.expiresAt)}</td>
+                  <td>
+                    {holdOrBooking.status === "confirmed" && (
+                      <form method="post">
+                        <input type="hidden" name="bookingId" value={holdOrBooking.id} />
+                        <button type="submit">取消訂位</button>
+                      </form>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </>
+    )
+  }
+</AdminLayout>

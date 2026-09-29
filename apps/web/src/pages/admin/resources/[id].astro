@@ -99,6 +99,7 @@ const slotErrors = slotFailure?.fields ?? {};
                     <td>{s.remainingSeats}</td>
                     <td>{describeOccupancy(s)}</td>
                     <td>
+                      <a href={`/admin/slots/${s.id}`}>查看保留與訂位</a>
                       <form method="post">
                         <input type="hidden" name="intent" value="update-capacity" />
                         <input type="hidden" name="slotId" value={s.id} />

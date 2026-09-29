@@ -6,6 +6,7 @@ import { CONFIRM_INTENT } from "../holds/confirm";
 import { handleMePost } from "../holds/me-post";
 import { heldNotice } from "../holds/held-notice";
 import { formatTaipeiDate, formatTaipeiTime } from "../catalog/taipei-time";
+import { holdOrBookingStatus } from "../shared/booking-status";
 
 export const prerender = false;
 
@@ -51,7 +52,7 @@ const formatDateTime = (epochMs: number) => `${formatTaipeiDate(epochMs)} ${form
     <h2>我的保留</h2>
     <p><a href="/">回到時段列表</a>　時間皆為台北時間。</p>
     {formError && <p role="alert">{formError}</p>}
-    {confirmedId !== null && bookings.some((b) => String(b.id) === confirmedId) && <p role="status">訂位成功</p>}
+    {confirmedId !== null && bookings.some((b) => String(b.id) === confirmedId && b.status === "confirmed") && <p role="status">訂位成功</p>}
     {cancelledId !== null && /^\d+$/.test(cancelledId) && <p role="status">已取消訂位</p>}
     {notice?.kind === "held" && <p role="status">保留成功，請於 {formatDateTime(notice.hold.expiresAt)} 前確認</p>}
     {notice?.kind === "missing" && <p role="status">此保留已過期或不存在</p>}
@@ -105,6 +106,7 @@ const formatDateTime = (epochMs: number) => `${formatTaipeiDate(epochMs)} ${form
               <th>日期</th>
               <th>時間</th>
               <th>名額</th>
+              <th>狀態</th>
               <th>取消截止時間</th>
               <th>取消</th>
             </tr>
@@ -118,9 +120,10 @@ const formatDateTime = (epochMs: number) => `${formatTaipeiDate(epochMs)} ${form
                   {formatTaipeiTime(booking.startsAt)}–{formatTaipeiTime(booking.endsAt)}
                 </td>
                 <td>{booking.seats}</td>
+                <td>{holdOrBookingStatus(booking)}</td>
                 <td>{formatDateTime(booking.cancellableUntil)}</td>
                 <td>
-                  {now <= booking.cancellableUntil ? (
+                  {booking.status !== "confirmed" ? null : now <= booking.cancellableUntil ? (
                     <form method="post">
                       <input type="hidden" name="intent" value={CANCEL_INTENT} />
                       <input type="hidden" name="bookingId" value={booking.id} />

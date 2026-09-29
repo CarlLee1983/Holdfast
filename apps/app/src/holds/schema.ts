@@ -11,7 +11,7 @@ export const HELD = "held";
 export const CONFIRMED = "confirmed";
 /** 過期保留被釋放後的標記（#9）；只是整理，不參與有效與否的判定（ADR 0003）。 */
 export const RELEASED = "released";
-/** 訂位被取消（#10）：不再占用名額，也不再算訂位。 */
+/** 訂位被取消（#10 會員、#12 管理者）：不再占用名額，也不再是有效訂位。 */
 export const CANCELLED = "cancelled";
 
 /** 所有狀態的聯集；之後新增狀態時加在這裡，依此做窮盡檢查的地方會編譯失敗。 */
@@ -35,6 +35,8 @@ export const holds = sqliteTable(
     createdAt: integer("created_at").notNull(),
     /** 訂位被取消的時間（Clock），未取消為 null。 */
     cancelledAt: integer("cancelled_at"),
+    /** 誰取消的：會員自己（#10）或管理者（#12）；未取消為 null。 */
+    cancelledBy: text("cancelled_by").$type<"admin" | "member">(),
   },
   (t) => [
     // 加總已占用名額的子查詢用（ADR 0004）

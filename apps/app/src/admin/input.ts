@@ -75,6 +75,12 @@ export const updateSlotCapacityInput = z.object({ slotId, capacity });
 
 export const deleteSlotInput = z.object({ slotId });
 
+export const listSlotHoldsAndBookingsInput = z.object({ slotId });
+export const cancelBookingInput = z.object({
+  slotId,
+  bookingId: wholeNumber("訂位").positive("訂位編號無效"),
+});
+
 export type CreateResourceInput = z.output<typeof createResourceInput>;
 export type UpdateResourceInput = z.output<typeof updateResourceInput>;
 export type CreateSlotInput = z.output<typeof createSlotInput>;

@@ -196,6 +196,9 @@ describe("cancelBooking", () => {
         startsAt: STARTS_AT,
         endsAt: STARTS_AT + HOUR,
         seats: 2,
+        status: "confirmed",
+        cancelledAt: null,
+        cancelledBy: null,
         cancellableUntil: CUTOFF,
       },
     ]);

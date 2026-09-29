@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, inArray, lte, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, lte, or, sql, type SQL } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { resources, slots } from "../catalog/schema";
 import {
@@ -41,6 +41,9 @@ export interface SlotSummary {
 export interface MyHold extends HoldRecord, SlotSummary {}
 
 export interface MyBooking extends BookingRecord, SlotSummary {
+  status: typeof CONFIRMED | typeof CANCELLED;
+  cancelledAt: number | null;
+  cancelledBy: "admin" | "member" | null;
   /** 取消截止時刻（UTC epoch 毫秒）：`now <= cancellableUntil` 才能取消。 */
   cancellableUntil: number;
 }
@@ -183,7 +186,7 @@ export async function cancelBookingIfBeforeCutoff(
   now: number,
 ): Promise<number> {
   const result = await db.run(sql`
-    UPDATE holds SET status = ${CANCELLED}, cancelled_at = ${now}
+    UPDATE holds SET status = ${CANCELLED}, cancelled_at = ${now}, cancelled_by = 'member'
     WHERE id = ${bookingId} AND member_id = ${memberId} AND status = ${CONFIRMED}
       AND EXISTS (
         SELECT 1 FROM ${slots} JOIN ${resources} ON ${resources.id} = ${slots.resourceId}
@@ -221,11 +224,14 @@ export async function selectOwnHold(
 
 /** 會員自己的訂位，依時段開始時間、id 排序。 */
 export async function selectBookings(db: DrizzleD1Database, memberId: string): Promise<MyBooking[]> {
-  return db
+  const rows = await db
     .select({
       id: holds.id,
       slotId: holds.slotId,
       seats: holds.seats,
+      status: holds.status,
+      cancelledAt: holds.cancelledAt,
+      cancelledBy: holds.cancelledBy,
       resourceName: resources.name,
       startsAt: slots.startsAt,
       endsAt: slots.endsAt,
@@ -234,8 +240,15 @@ export async function selectBookings(db: DrizzleD1Database, memberId: string): P
     .from(holds)
     .innerJoin(slots, eq(slots.id, holds.slotId))
     .innerJoin(resources, eq(resources.id, slots.resourceId))
-    .where(and(eq(holds.memberId, memberId), eq(holds.status, CONFIRMED)))
+    .where(
+      and(
+        eq(holds.memberId, memberId),
+        // 會員自己取消的訂位離開列表（#10）；被管理者取消的要讓會員看得到（#12）
+        or(eq(holds.status, CONFIRMED), and(eq(holds.status, CANCELLED), eq(holds.cancelledBy, "admin"))),
+      ),
+    )
     .orderBy(asc(slots.startsAt), asc(holds.id));
+  return rows.map((row) => ({ ...row, status: row.status as MyBooking["status"] }));
 }
 
 /** 帳號刪除用：會員未來時段（`starts_at > now`）的訂位改為已取消；已開始時段的是歷史紀錄，不動。回傳 batch 用的語句。 */

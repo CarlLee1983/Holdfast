@@ -54,7 +54,7 @@ bun run preview        # astro build 後以 wrangler dev 同時跑兩個 Worker�
 
 ## 管理後台
 
-`/admin`（資源列表、建立與修改資源、建立時段；時間以台北時間輸入）前面放 Cloudflare Access，理由與取捨見 [ADR 0007](docs/adr/0007-admin-behind-cloudflare-access.md)。
+`/admin`（資源列表、建立與修改資源、建立時段、查看時段內的保留與訂位、取消訂位；時間以台北時間輸入與顯示）前面放 Cloudflare Access，理由與取捨見 [ADR 0007](docs/adr/0007-admin-behind-cloudflare-access.md)。會員可在 `/me` 看到被管理者取消的訂位。
 Web Worker 只把請求裡的 `Cf-Access-Jwt-Assertion` 原樣轉交給 App Worker，授權完全由 App 的管理 RPC 自己驗簽決定（RS256、`aud`、`iss`、未過期，容許 30 秒時鐘誤差）。
 每個成功的管理寫入都在同一個 D1 batch 內寫一列 `admin_audit`（操作者 email），並輸出一行結構化 log。
 

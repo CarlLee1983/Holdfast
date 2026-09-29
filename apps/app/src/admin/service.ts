@@ -8,8 +8,16 @@ import { fail, ok, type InvalidInput, type Result } from "../shared/result";
 import { createAccessVerifier, type AccessConfig, type AccessIdentity } from "./access";
 import { parseInput } from "../shared/input";
 import { discardableHold } from "../holds/occupancy";
-import { holds } from "../holds/schema";
-import { createResourceInput, createSlotInput, deleteSlotInput, updateResourceInput, updateSlotCapacityInput } from "./input";
+import { CANCELLED, CONFIRMED, HELD, holds, RELEASED } from "../holds/schema";
+import {
+  cancelBookingInput,
+  createResourceInput,
+  createSlotInput,
+  deleteSlotInput,
+  listSlotHoldsAndBookingsInput,
+  updateResourceInput,
+  updateSlotCapacityInput,
+} from "./input";
 import { selectAdminSlots, slotExists, type AdminSlot } from "./queries";
 
 export interface SlotRecord {
@@ -19,6 +27,26 @@ export interface SlotRecord {
   endsAt: number;
   capacity: number;
 }
+
+export interface AdminHoldOrBooking {
+  id: number;
+  memberId: string;
+  memberName: string | null;
+  memberEmail: string | null;
+  seats: number;
+  status: typeof HELD | typeof CONFIRMED | typeof RELEASED | typeof CANCELLED | "expired";
+  expiresAt: number;
+  createdAt: number;
+  cancelledAt: number | null;
+  cancelledBy: "admin" | "member" | null;
+}
+
+export interface SlotHoldsAndBookings {
+  slot: SlotRecord & { resourceName: string };
+  holdsAndBookings: AdminHoldOrBooking[];
+}
+
+interface AdminBooking { id: number; slotId: number; seats: number }
 
 type AdminResult<T, Reason extends string = never> =
   | Result<T, Reason | "unauthorized">
@@ -146,6 +174,57 @@ export function createAdminService(d1: D1Database, clock: Clock, accessConfig: A
   }
 
   return {
+    listSlotHoldsAndBookingsForAdmin(jwt: unknown, input: unknown): Promise<AdminResult<SlotHoldsAndBookings, "slot_not_found">> {
+      return authorizedWrite(jwt, listSlotHoldsAndBookingsInput, input, async (_actor, { slotId }) => {
+        const slot = await d1.prepare(
+          `SELECT s.id, s.resource_id AS resourceId, s.starts_at AS startsAt,
+                  s.ends_at AS endsAt, s.capacity, r.name AS resourceName
+           FROM slots s JOIN resources r ON r.id = s.resource_id WHERE s.id = ?`,
+        ).bind(slotId).first<SlotHoldsAndBookings["slot"]>();
+        if (!slot) return fail("slot_not_found");
+        const { results } = await d1.prepare(
+          `SELECT h.id, h.member_id AS memberId, u.name AS memberName, u.email AS memberEmail,
+                  h.seats, h.status, h.expires_at AS expiresAt, h.created_at AS createdAt,
+                  h.cancelled_at AS cancelledAt, h.cancelled_by AS cancelledBy
+           FROM holds h LEFT JOIN "user" u ON u.id = h.member_id
+           WHERE h.slot_id = ? ORDER BY h.created_at, h.id`,
+        ).bind(slotId).all<AdminHoldOrBooking>();
+        const now = clock.now();
+        return ok({
+          slot,
+          holdsAndBookings: results.map((row) => ({ ...row, status: row.status === HELD && row.expiresAt <= now ? "expired" : row.status })),
+        });
+      });
+    },
+
+    cancelBookingForAdmin(jwt: unknown, input: unknown): Promise<AdminResult<AdminBooking, "booking_not_found">> {
+      return authorizedWrite(jwt, cancelBookingInput, input, async (actor, { slotId, bookingId }) => {
+        const at = clock.now();
+        // D1 batch is atomic. changes() makes the audit conditional on the preceding UPDATE.
+        const [updated] = await d1.batch<AdminBooking>([
+          d1.prepare(
+            `UPDATE holds SET status = ?, cancelled_at = ?, cancelled_by = 'admin'
+             WHERE id = ? AND slot_id = ? AND status = ? RETURNING id, slot_id AS slotId, seats`,
+          ).bind(CANCELLED, at, bookingId, slotId, CONFIRMED),
+          d1.prepare(
+            `INSERT INTO admin_audit (${AUDIT_COLUMNS})
+             SELECT ?, 'booking.cancel', 'booking', ?, ?, '{}'
+             WHERE changes() > 0`,
+          ).bind(actor.email, bookingId, at),
+        ]);
+        const booking = updated!.results[0];
+        if (booking) {
+          logAudit(actor, "booking.cancel", "booking", bookingId, {});
+          return ok(booking);
+        }
+        // A repeated or concurrent cancellation is harmless and does not add an audit row.
+        const prior = await d1.prepare(
+          "SELECT id, slot_id AS slotId, seats FROM holds WHERE id = ? AND slot_id = ? AND status = ? AND cancelled_by = 'admin'",
+        ).bind(bookingId, slotId, CANCELLED).first<AdminBooking>();
+        return prior ? ok(prior) : fail("booking_not_found");
+      });
+    },
+
     async listResourcesForAdmin(jwt: unknown): Promise<AdminResult<ResourceSummary[]>> {
       const auth = await verifier.verify(jwt);
       if (!auth.ok) return auth;
