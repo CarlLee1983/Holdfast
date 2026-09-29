@@ -15,6 +15,17 @@ export function describeHoldFailure(reason: string): string {
   return describeReason(MESSAGES, reason, "建立保留");
 }
 
+const CONFIRM_MESSAGES: Record<string, string> = {
+  hold_expired: "保留已過期，無法確認，請重新保留",
+  hold_not_found: "找不到這筆保留",
+  invalid_input: "輸入有誤",
+};
+
+/** 確認保留失敗的 reason 轉成給會員看的訊息；未知的 reason 不外洩，只寫進 log。 */
+export function describeConfirmFailure(reason: string): string {
+  return describeReason(CONFIRM_MESSAGES, reason, "確認保留");
+}
+
 /** 輸入有誤是 422，其餘業務拒絕（名額、時間、冪等鍵衝突）是 409。 */
 export function holdFailureStatus(reason: string): 409 | 422 {
   return reason === "invalid_input" ? 422 : 409;

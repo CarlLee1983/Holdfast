@@ -2,16 +2,22 @@ import { drizzle } from "drizzle-orm/d1";
 import type { Clock } from "../shared/clock";
 import { fail, ok, type InvalidInput, type Result } from "../shared/result";
 import { parseInput } from "../shared/input";
-import { createHoldInput, memberIdInput } from "./input";
+import { confirmHoldInput, createHoldInput, memberIdInput } from "./input";
 import {
+  confirmHoldIfActive,
   insertHoldIfAvailable,
   selectActiveHolds,
+  selectBookings,
   selectHoldByKey,
+  selectOwnHold,
   selectSlotDiagnosis,
+  type BookingRecord,
   type HoldRecord,
   type HoldRequest,
+  type MyBooking,
   type MyHold,
 } from "./queries";
+import { CONFIRMED } from "./schema";
 
 export type CreateHoldResult =
   | Result<
@@ -24,6 +30,10 @@ export type CreateHoldResult =
       | "insufficient_seats"
     >
   | InvalidInput;
+
+export type ConfirmHoldResult = Result<BookingRecord, "hold_not_found" | "hold_expired"> | InvalidInput;
+
+export type ListMyBookingsResult = Result<MyBooking[], never> | InvalidInput;
 
 export type ListMyHoldsResult = Result<MyHold[], never> | InvalidInput;
 
@@ -77,6 +87,31 @@ export function createHoldService(d1: D1Database, clock: Clock) {
       const member = parseInput(memberIdInput, memberId);
       if (!member.ok) return member;
       return ok(await selectActiveHolds(db, member.data, clock.now()));
+    },
+
+    async confirmHold(memberId: unknown, input: unknown): Promise<ConfirmHoldResult> {
+      const member = parseInput(memberIdInput, memberId);
+      if (!member.ok) return member;
+      const parsed = parseInput(confirmHoldInput, input);
+      if (!parsed.ok) return parsed;
+
+      const { holdId } = parsed.data;
+      const changes = await confirmHoldIfActive(db, member.data, holdId, clock.now());
+      // 寫入之後再讀：成功時就是剛確認的那筆；changes = 0 時診斷原因，只影響回應，不影響正確性
+      const own = await selectOwnHold(db, member.data, holdId);
+      if (!own) return fail("hold_not_found");
+      if (changes === 1) {
+        console.log(JSON.stringify({ event: "hold_confirmed", holdId, slotId: own.slotId, seats: own.seats }));
+      }
+      // 已確認：重複確認回同一筆訂位（冪等）；其餘（保留中但沒寫進去）就是已到期
+      if (own.status === CONFIRMED) return ok({ id: own.id, slotId: own.slotId, seats: own.seats });
+      return fail("hold_expired");
+    },
+
+    async listMyBookings(memberId: unknown): Promise<ListMyBookingsResult> {
+      const member = parseInput(memberIdInput, memberId);
+      if (!member.ok) return member;
+      return ok(await selectBookings(db, member.data));
     },
   };
 }
