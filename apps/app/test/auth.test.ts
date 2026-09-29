@@ -99,6 +99,76 @@ describe("會員登入（LINE 與 Google）", () => {
   });
 });
 
+describe("LINE 身分缺少 sub", () => {
+  beforeEach(resetDb);
+  afterEach(() => vi.restoreAllMocks());
+
+  it.each([
+    ["沒有 sub", { name: "NoSub" }],
+    ["sub 是空字串", { sub: "", name: "Empty" }],
+    ["sub 不是字串", { sub: 42, name: "Num" }],
+  ])("%s：登入被拒絕，不建立會員，也不產生 line-undefined 的 email", async (_label, profile) => {
+    const login = await loginWith("line", profile);
+
+    expect(login.sessionCookie).toBeUndefined();
+    expect(await userEmails()).toEqual([]);
+    expect(await sessionCount()).toBe(0);
+  });
+});
+
+describe("OAuth token 加密", () => {
+  beforeEach(resetDb);
+  afterEach(() => vi.restoreAllMocks());
+
+  it("account 表裡的 access token 不是 provider 回傳的明文", async () => {
+    await loginWith("google", { sub: "g-1", email: "a@example.com", name: "Alice" });
+
+    const row = await env.DB.prepare("SELECT access_token FROM account").first<{
+      access_token: string | null;
+    }>();
+    expect(row!.access_token).toBeTruthy();
+    expect(row!.access_token).not.toBe("access-token");
+  });
+});
+
+describe("rate limit", () => {
+  beforeEach(resetDb);
+
+  const signIn = (headers: Record<string, string>) =>
+    app.fetch(
+      new Request(`${ORIGIN}/api/auth/sign-in/social`, {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: ORIGIN, ...headers },
+        body: JSON.stringify({ provider: "google", callbackURL: "/" }),
+      }),
+    );
+
+  async function rateLimitKeys(): Promise<string[]> {
+    const { results } = await env.DB.prepare("SELECT key FROM rate_limit ORDER BY key").all<{
+      key: string;
+    }>();
+    return results.map((row) => row.key);
+  }
+
+  it("計數存在 D1，key 用 cf-connecting-ip，不受 X-Forwarded-For 影響", async () => {
+    await signIn({ "cf-connecting-ip": "203.0.113.7", "x-forwarded-for": "198.51.100.1" });
+
+    expect(await rateLimitKeys()).toEqual(["203.0.113.7|/sign-in/social"]);
+  });
+
+  it("同一個 cf-connecting-ip 換 X-Forwarded-For 也擋得住（sign-in 10 秒內 3 次）", async () => {
+    const statuses: number[] = [];
+    for (const forwarded of ["1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4"]) {
+      const response = await signIn({ "cf-connecting-ip": "203.0.113.7", "x-forwarded-for": forwarded });
+      statuses.push(response.status);
+    }
+
+    expect(statuses).toEqual([200, 200, 200, 429]);
+    // 不同的 cf-connecting-ip 有自己的額度
+    expect((await signIn({ "cf-connecting-ip": "203.0.113.8" })).status).toBe(200);
+  });
+});
+
 describe("帳號連結關閉", () => {
   beforeEach(resetDb);
   afterEach(() => vi.restoreAllMocks());

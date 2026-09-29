@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/entrypoint.ts"
+    ".": "./src/entrypoint.ts",
+    "./auth-paths": "./src/auth/paths.ts"
   },
   "scripts": {
     "typecheck": "wrangler types --strict-vars=false && tsc --noEmit && tsc --noEmit -p tsconfig.test.json",

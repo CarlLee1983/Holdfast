@@ -1,16 +1,11 @@
-import { env, WorkerEntrypoint } from "cloudflare:workers";
-import { createAuth } from "./auth/auth";
-import { parseAuthConfig } from "./auth/config";
+import { WorkerEntrypoint } from "cloudflare:workers";
+import { createAuth, type Auth } from "./auth/auth";
+import { AuthConfigError, parseAuthConfig } from "./auth/config";
+import { AUTH_PATH_PREFIX } from "./auth/paths";
 import { readMemberSession } from "./auth/session";
 import { createAdminService } from "./admin/service";
 import { createCatalogService } from "./catalog/service";
 import { systemClock } from "./shared/clock";
-
-// 載入時就驗證會員登入的設定：缺任何一個 secret 整個 App Worker 都起不來（含 catalog 與 admin RPC），
-// 比登入時才發現好。頂層讀 env 只讀 vars 與 secrets，不做 I/O。
-const authConfig = parseAuthConfig(env);
-
-const AUTH_PATH_PREFIX = "/api/auth/";
 
 /**
  * App Worker 對外的介面（ADR 0005）：Web Worker 經 Service Binding 呼叫這些 RPC 方法。
@@ -31,8 +26,19 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
     });
   }
 
+  /**
+   * 會員登入的設定在這裡才驗證，不在模組載入時：設定缺漏只讓 auth 路徑失敗，catalog 與管理 RPC 照常運作
+   * （ADR 0008）。失敗時記一行只含變數名稱的 log 再丟出。
+   */
   #auth() {
-    return createAuth(authConfig, this.env.DB);
+    try {
+      return createAuth(parseAuthConfig(this.env), this.env.DB);
+    } catch (error) {
+      if (error instanceof AuthConfigError) {
+        console.error(JSON.stringify({ event: "auth_config_invalid", error: error.message }));
+      }
+      throw error;
+    }
   }
 
   /** Web Worker 把 `/api/auth/*` 原封轉來（ADR 0008）；App 沒有其他 HTTP 入口。 */
@@ -40,11 +46,18 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
     if (!new URL(request.url).pathname.startsWith(AUTH_PATH_PREFIX)) {
       return new Response("Not Found", { status: 404 });
     }
-    return this.#auth().handler(request);
+    let auth: Auth;
+    try {
+      auth = this.#auth();
+    } catch (error) {
+      if (error instanceof AuthConfigError) return new Response("Service Unavailable", { status: 503 });
+      throw error;
+    }
+    return auth.handler(request);
   }
 
   /** 以瀏覽器的 cookie 換會員資訊；不是會員時 `member` 為 null。`setCookies` 要原樣附加到回給瀏覽器的回應。 */
-  getMemberSession(cookie: string) {
+  async getMemberSession(cookie: string) {
     return readMemberSession(this.#auth(), cookie);
   }
 

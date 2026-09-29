@@ -22,6 +22,11 @@ export const AUTH_SECRET_NAMES = [
   "LINE_CHANNEL_SECRET",
 ] as const satisfies readonly (keyof typeof authEnvSchema.shape)[];
 
+/** 會員登入的環境設定缺少或無效；訊息只含變數名稱與原因，不含值。 */
+export class AuthConfigError extends Error {
+  override name = "AuthConfigError";
+}
+
 export interface OAuthClient {
   clientId: string;
   clientSecret: string;
@@ -36,7 +41,8 @@ export interface AuthConfig {
 
 /**
  * 驗證並整理 Better Auth 需要的環境設定。缺少或無效時一次列出所有變數名稱後丟出錯誤
- * （只寫名稱與原因，不含值，避免 secret 進 log）。App Worker 在載入時呼叫它，所以設定不全時整個 Worker 起不來。
+ * （只寫名稱與原因，不含值，避免 secret 進 log）。只有 auth 路徑（`fetch`、`getMemberSession`）會呼叫它，
+ * 所以設定不全時只有會員登入不可用，catalog 與管理 RPC 不受影響（ADR 0008）。
  */
 export function parseAuthConfig(env: object): AuthConfig {
   const parsed = authEnvSchema.safeParse(env);
@@ -44,7 +50,7 @@ export function parseAuthConfig(env: object): AuthConfig {
     const problems = parsed.error.issues.map(
       (issue) => `${issue.path.join(".")}（${issue.message}）`,
     );
-    throw new Error(`會員登入的環境設定不完整或無效：${problems.join("、")}`);
+    throw new AuthConfigError(`會員登入的環境設定不完整或無效：${problems.join("、")}`);
   }
   const values = parsed.data;
   return {

@@ -19,15 +19,8 @@
     {
       "idx": 2,
       "version": "6",
-      "when": 1790655892032,
-      "tag": "0002_striped_abomination",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "6",
-      "when": 1790656379140,
-      "tag": "0003_friendly_dragon_man",
+      "when": 1790662464545,
+      "tag": "0002_dry_puma",
       "breakpoints": true
     }
   ]
