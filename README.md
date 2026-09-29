@@ -79,7 +79,7 @@ Session 壽命用 Better Auth 預設值（7 天，逾 1 天的請求會延長）
 
 | 名稱 | 種類 | 說明 |
 | --- | --- | --- |
-| `BETTER_AUTH_URL` | `wrangler.jsonc` 的 `vars` | 瀏覽器看到的 Web Worker 公開 origin，不含結尾斜線；OAuth 的 redirect_uri 由它組成。頂層是 `http://localhost:4321`，preview / production 目前留空，部署前填入 |
+| `BETTER_AUTH_URL` | `wrangler.jsonc` 的 `vars` | 瀏覽器看到的 Web Worker 公開 origin，不含結尾斜線；OAuth 的 redirect_uri 由它組成。頂層是 `http://localhost:4321`，preview 為 `https://holdfast-preview.gravito.dev`、production 為 `https://holdfast.gravito.dev` |
 | `BETTER_AUTH_SECRET` | secret | 至少 32 字元 |
 | `GOOGLE_CLIENT_ID`、`GOOGLE_CLIENT_SECRET` | secret | Google Cloud Console 的 OAuth client |
 | `LINE_CHANNEL_ID`、`LINE_CHANNEL_SECRET` | secret | LINE Developers 的 LINE Login channel（Channel ID、Channel secret）；要取得 email 需另外申請權限，但我們不儲存它 |
@@ -87,7 +87,7 @@ Session 壽命用 Better Auth 預設值（7 天，逾 1 天的請求會延長）
 **每個環境部署前要做的事**：
 
 1. 在 Google 與 LINE 後台登記 callback：`<BETTER_AUTH_URL>/api/auth/callback/google` 與 `<BETTER_AUTH_URL>/api/auth/callback/line`（本機也要登記 `http://localhost:4321/...`，埠被占用時 astro 會換埠，callback 就對不上）。
-2. 填 `apps/app/wrangler.jsonc` 該環境的 `BETTER_AUTH_URL`。
+2. 確認 `apps/app/wrangler.jsonc` 該環境的 `BETTER_AUTH_URL` 是 Web 的自訂網域（新環境要先填）。
 3. 設定 secrets（各環境各一組，值互不共用）：`cd apps/app && bunx wrangler secret put BETTER_AUTH_SECRET --env <env>`，其餘四個同理。secrets 沒設齊時 App Worker 載入會失敗，這是預期行為；部署工作流程會在 migration 之前檢查（見「部署」）。
 
 **本機開發**：複製 `apps/app/.dev.vars.example` 為 `apps/app/.dev.vars`（已 gitignore，與 `admin:dev-token` 寫入的鍵並存）並填值。測試不需要它，`apps/app/vitest.config.ts` 會注入假值。
