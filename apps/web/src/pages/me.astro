@@ -178,6 +178,9 @@ const formatDateTime = (epochMs: number) => `${formatTaipeiDate(epochMs)} ${form
       }
       item.expired = true;
       item.confirm.disabled = true;
+      // 約定：帶 data-expired 的按鈕不可被恢復。MemberLayout 的 bfcache 還原（pageshow）會恢復帶 data-submitting 的按鈕，
+      // 但要跳過這顆——否則「送出確認後、伺服器回應前到期，再從 bfcache 返回」會讓已到期的按鈕變回可按
+      item.confirm.dataset.expired = "";
       // 卡片內換成純文字；報讀交給頁面上唯一預先存在的 aria-live 區，頁面不自動重新整理
       item.countdown.textContent = "已到期";
       item.countdown.classList.add("hold-expired");

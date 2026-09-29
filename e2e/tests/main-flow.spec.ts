@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { holdableSlot } from "../harness/slots";
 import { memberSessionCookie } from "../harness/session-cookie";
 
 test("會員主流程：登入 → 看到時段 → 保留 → 確認 → 會員頁看到訂位 → 取消", async ({ page, context }) => {
@@ -13,11 +14,8 @@ test("會員主流程：登入 → 看到時段 → 保留 → 確認 → 會員
   // 時段依台北日期分組，每組有含星期的日期標題（例如「9/30（週三）」）
   await expect(page.getByRole("heading", { level: 2, name: /^\d{1,2}\/\d{1,2}（週.）$/ }).first()).toBeVisible();
   await expect(page.getByRole("article", { name: "包廂" }).first()).toBeVisible();
-  // 卡片的可及名稱是「資源名稱＋時間」，用部分比對；只挑有「保留」按鈕的卡片，不假設第一張一定可保留
-  const lobby = page
-    .getByRole("article", { name: "大廳用餐" })
-    .filter({ has: page.getByRole("button", { name: "保留" }) })
-    .first();
+  // 保留的時段見 harness/slots.ts
+  const lobby = holdableSlot(page, "main");
   await lobby.getByRole("button", { name: "保留" }).click();
 
   await expect(page).toHaveURL(/\/me\?held=\d+$/);

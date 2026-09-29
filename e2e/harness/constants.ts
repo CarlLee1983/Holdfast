@@ -26,3 +26,14 @@ export const SIGN_OUT_SESSION = { id: "e2e-sign-out-session", token: "e2e-sign-o
  */
 export const COUNTDOWN_MEMBER = { id: "e2e-countdown-member", name: "E2E 倒數會員", email: "e2e-countdown@members.holdfast.invalid" } as const;
 export const COUNTDOWN_SESSION = { id: "e2e-countdown-session", token: "e2e-countdown-session-token" } as const;
+
+/**
+ * 防重複送出測試專用的會員與 session。該測試會留下一筆有效保留，且要與其他 spec 並行，
+ * 共用 MEMBER／COUNTDOWN_MEMBER 會撞到「同一時段一筆、同時最多 3 筆」的限制。
+ */
+export const DOUBLE_SUBMIT_MEMBER = { id: "e2e-double-submit-member", name: "E2E 防重送會員", email: "e2e-double-submit@members.holdfast.invalid" } as const;
+export const DOUBLE_SUBMIT_SESSION = { id: "e2e-double-submit-session", token: "e2e-double-submit-session-token" } as const;
+
+/** 無 JavaScript 測試專用的會員與 session：與防重複送出的其他測試各自獨立，/me 的保留列表才不會混入彼此的保留。 */
+export const NO_JS_MEMBER = { id: "e2e-no-js-member", name: "E2E 無 JS 會員", email: "e2e-no-js@members.holdfast.invalid" } as const;
+export const NO_JS_SESSION = { id: "e2e-no-js-session", token: "e2e-no-js-session-token" } as const;
