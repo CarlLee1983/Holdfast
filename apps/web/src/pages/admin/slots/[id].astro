@@ -2,7 +2,8 @@
 import { env } from "cloudflare:workers";
 import { readAccessJwt } from "../../../admin/access-jwt";
 import { handleCancelBookingPost } from "../../../admin/cancel-booking";
-import { memberIdentity, reservationStatus } from "../../../admin/slot-reservations";
+import { memberIdentity } from "../../../admin/slot-holds-and-bookings";
+import { holdOrBookingStatus } from "../../../shared/booking-status";
 import { formatTaipeiDate, formatTaipeiTime } from "../../../catalog/taipei-time";
 import AccessDenied from "../../../components/AccessDenied.astro";
 import AdminLayout from "../../../layouts/AdminLayout.astro";
@@ -25,7 +26,7 @@ if (validSlotId && Astro.request.method === "POST") {
 }
 
 const result = validSlotId && !unauthorized
-  ? await env.APP.listSlotReservationsForAdmin(jwt, { slotId })
+  ? await env.APP.listSlotHoldsAndBookingsForAdmin(jwt, { slotId })
   : null;
 unauthorized ||= result !== null && !result.ok && result.reason === "unauthorized";
 if (unauthorized) Astro.response.status = 403;
@@ -33,10 +34,9 @@ else if (!validSlotId || (result && !result.ok && result.reason === "slot_not_fo
 else if (result && !result.ok && result.reason === "invalid_input") Astro.response.status = 422;
 
 const slot = result?.ok ? result.data.slot : null;
-const reservations = result?.ok ? result.data.reservations : [];
-const now = Date.now();
+const holdsAndBookings = result?.ok ? result.data.holdsAndBookings : [];
 const cancelledId = Astro.url.searchParams.get("cancelled");
-const cancelled = cancelledId !== null && reservations.some((r) => String(r.id) === cancelledId && r.status === "cancelled");
+const cancelled = cancelledId !== null && holdsAndBookings.some((r) => String(r.id) === cancelledId && r.status === "cancelled");
 const formatDateTime = (time: number) => `${formatTaipeiDate(time)} ${formatTaipeiTime(time)}`;
 ---
 
@@ -53,7 +53,7 @@ const formatDateTime = (time: number) => `${formatTaipeiDate(time)} ${formatTaip
         {cancelled && <p class="notice" role="status">訂位已取消，名額已歸還。</p>}
         {cancelError && <p class="error" role="alert">{cancelError}</p>}
         <h2>保留與訂位</h2>
-        {reservations.length === 0 ? (
+        {holdsAndBookings.length === 0 ? (
           <p>這個時段沒有保留或訂位。</p>
         ) : (
           <table>
@@ -61,18 +61,18 @@ const formatDateTime = (time: number) => `${formatTaipeiDate(time)} ${formatTaip
               <tr><th>會員</th><th>Email</th><th>名額</th><th>狀態</th><th>建立時間</th><th>到期時間</th><th>操作</th></tr>
             </thead>
             <tbody>
-              {reservations.map((reservation) => (
+              {holdsAndBookings.map((holdOrBooking) => (
                 <tr>
-                  <td>{memberIdentity(reservation)}</td>
-                  <td>{reservation.memberEmail ?? "—"}</td>
-                  <td>{reservation.seats}</td>
-                  <td>{reservationStatus(reservation, now)}</td>
-                  <td>{formatDateTime(reservation.createdAt)}</td>
-                  <td>{formatDateTime(reservation.expiresAt)}</td>
+                  <td>{memberIdentity(holdOrBooking)}</td>
+                  <td>{holdOrBooking.memberEmail ?? "—"}</td>
+                  <td>{holdOrBooking.seats}</td>
+                  <td>{holdOrBookingStatus(holdOrBooking)}</td>
+                  <td>{formatDateTime(holdOrBooking.createdAt)}</td>
+                  <td>{formatDateTime(holdOrBooking.expiresAt)}</td>
                   <td>
-                    {reservation.status === "confirmed" && (
+                    {holdOrBooking.status === "confirmed" && (
                       <form method="post">
-                        <input type="hidden" name="bookingId" value={reservation.id} />
+                        <input type="hidden" name="bookingId" value={holdOrBooking.id} />
                         <button type="submit">取消訂位</button>
                       </form>
                     )}

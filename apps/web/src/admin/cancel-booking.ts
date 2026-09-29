@@ -10,7 +10,7 @@ interface CancelBookingPostContext {
   jwt: string;
   request: Request;
   app: {
-    cancelBookingForAdmin: (jwt: string, input: { bookingId: number }) => Promise<
+    cancelBookingForAdmin: (jwt: string, input: { slotId: number; bookingId: number }) => Promise<
       | { ok: true; data: { id: number } }
       | { ok: false; reason: string; fields?: Record<string, string[]> }
     >;
@@ -33,7 +33,7 @@ export async function handleCancelBookingPost({
   }
 
   const bookingId = toNumber(form.get("bookingId"));
-  const result = await app.cancelBookingForAdmin(jwt, { bookingId });
+  const result = await app.cancelBookingForAdmin(jwt, { slotId, bookingId });
   if (result.ok) {
     return { redirect: `/admin/slots/${slotId}?cancelled=${result.data.id}`, status: 303 };
   }

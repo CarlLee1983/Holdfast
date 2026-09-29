@@ -25,14 +25,14 @@ async function hold(memberId: string, key: string) {
   return result.ok ? result.data.id : -1;
 }
 
-describe("admin reservations", () => {
+describe("admin holds and bookings", () => {
   it("verifies JWT before reading or writing and validates identifiers", async () => {
-    expect(await app.listSlotReservationsForAdmin("bad", { slotId })).toEqual({ ok: false, reason: "unauthorized" });
-    expect(await app.cancelBookingForAdmin("bad", { bookingId: 1 })).toEqual({ ok: false, reason: "unauthorized" });
-    expect(await app.listSlotReservationsForAdmin(jwt, { slotId: 0 })).toMatchObject({ ok: false, reason: "invalid_input" });
-    expect(await app.cancelBookingForAdmin(jwt, { bookingId: 0 })).toMatchObject({ ok: false, reason: "invalid_input" });
-    expect(await app.listSlotReservationsForAdmin(jwt, { slotId: 999 })).toEqual({ ok: false, reason: "slot_not_found" });
-    expect(await app.cancelBookingForAdmin(jwt, { bookingId: 999 })).toEqual({ ok: false, reason: "booking_not_found" });
+    expect(await app.listSlotHoldsAndBookingsForAdmin("bad", { slotId })).toEqual({ ok: false, reason: "unauthorized" });
+    expect(await app.cancelBookingForAdmin("bad", { slotId, bookingId: 1 })).toEqual({ ok: false, reason: "unauthorized" });
+    expect(await app.listSlotHoldsAndBookingsForAdmin(jwt, { slotId: 0 })).toMatchObject({ ok: false, reason: "invalid_input" });
+    expect(await app.cancelBookingForAdmin(jwt, { slotId, bookingId: 0 })).toMatchObject({ ok: false, reason: "invalid_input" });
+    expect(await app.listSlotHoldsAndBookingsForAdmin(jwt, { slotId: 999 })).toEqual({ ok: false, reason: "slot_not_found" });
+    expect(await app.cancelBookingForAdmin(jwt, { slotId, bookingId: 999 })).toEqual({ ok: false, reason: "booking_not_found" });
     expect(await auditRows()).toHaveLength(0);
   });
 
@@ -40,16 +40,16 @@ describe("admin reservations", () => {
     await env.DB.prepare('INSERT INTO "user" (id, name, email, email_verified, created_at, updated_at) VALUES (?, ?, ?, 0, ?, ?)')
       .bind("m1", "Alice", "alice@example.com", NOW, NOW).run();
     const first = await hold("m1", "first");
-    const withAccount = await app.listSlotReservationsForAdmin(jwt, { slotId });
-    expect(withAccount.ok && withAccount.data.reservations[0]).toMatchObject({ memberName: "Alice", memberEmail: "alice@example.com" });
+    const withAccount = await app.listSlotHoldsAndBookingsForAdmin(jwt, { slotId });
+    expect(withAccount.ok && withAccount.data.holdsAndBookings[0]).toMatchObject({ memberName: "Alice", memberEmail: "alice@example.com" });
     setNow(NOW + 601_000);
     const second = await hold("m2", "second");
     await env.DB.prepare('DELETE FROM "user" WHERE id = ?').bind("m1").run();
 
-    const result = await app.listSlotReservationsForAdmin(jwt, { slotId });
+    const result = await app.listSlotHoldsAndBookingsForAdmin(jwt, { slotId });
     expect(result).toMatchObject({ ok: true, data: { slot: { id: slotId, resourceName: "大廳", capacity: 2 } } });
     if (!result.ok) return;
-    expect(result.data.reservations).toMatchObject([
+    expect(result.data.holdsAndBookings).toMatchObject([
       { id: first, memberId: "m1", memberName: null, memberEmail: null, status: "expired" },
       { id: second, memberId: "m2", memberName: null, memberEmail: null, status: "held" },
     ]);
@@ -61,7 +61,7 @@ describe("admin reservations", () => {
     setNow(NOW + HOUR + 1000);
     const before = await app.listSlots(resourceId);
     expect(before.ok && before.data[0]?.remainingSeats).toBe(0);
-    const cancelled = await app.cancelBookingForAdmin(jwt, { bookingId: first });
+    const cancelled = await app.cancelBookingForAdmin(jwt, { slotId, bookingId: first });
     expect(cancelled).toEqual({ ok: true, data: { id: first, slotId, seats: 2 } });
     const after = await app.listSlots(resourceId);
     expect(after.ok && after.data[0]?.remainingSeats).toBe(2);
@@ -76,9 +76,25 @@ describe("admin reservations", () => {
   it("writes exactly one audit for concurrent and repeated cancellations", async () => {
     const bookingId = await hold("m1", "first");
     await app.confirmHold("m1", { holdId: bookingId });
-    const results = await Promise.all(Array.from({ length: 4 }, () => app.cancelBookingForAdmin(jwt, { bookingId })));
+    const results = await Promise.all(Array.from({ length: 4 }, () => app.cancelBookingForAdmin(jwt, { slotId, bookingId })));
     expect(results.every((result) => result.ok)).toBe(true);
-    expect(await app.cancelBookingForAdmin(jwt, { bookingId })).toMatchObject({ ok: true });
+    expect(await app.cancelBookingForAdmin(jwt, { slotId, bookingId })).toMatchObject({ ok: true });
+    expect(await auditRows()).toHaveLength(1);
+  });
+
+  it("does not cancel a booking from another slot", async () => {
+    const bookingId = await hold("m1", "first");
+    await app.confirmHold("m1", { holdId: bookingId });
+    const otherSlotId = await insertSlot(resourceId, NOW + 3 * HOUR, NOW + 4 * HOUR, 2);
+    const before = await app.listSlots(resourceId);
+
+    expect(await app.cancelBookingForAdmin(jwt, { slotId: otherSlotId, bookingId })).toEqual({ ok: false, reason: "booking_not_found" });
+    expect(await app.listMyBookings("m1")).toMatchObject({ ok: true, data: [{ id: bookingId, status: "confirmed" }] });
+    expect(await app.listSlots(resourceId)).toEqual(before);
+    expect(await auditRows()).toHaveLength(0);
+
+    expect(await app.cancelBookingForAdmin(jwt, { slotId, bookingId })).toMatchObject({ ok: true });
+    expect(await app.cancelBookingForAdmin(jwt, { slotId: otherSlotId, bookingId })).toEqual({ ok: false, reason: "booking_not_found" });
     expect(await auditRows()).toHaveLength(1);
   });
 });
