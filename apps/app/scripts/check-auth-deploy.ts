@@ -1,17 +1,18 @@
-// 部署前檢查：會員登入的設定不全時 App Worker 會載入失敗，所以在 migration 之前先擋下。
-//   - BETTER_AUTH_URL 讀 wrangler.jsonc 該環境的 vars
-//   - secrets 讀 `wrangler secret list --env <env>`（需要 CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID）
+// 部署前檢查：會員登入的設定不全或 BETTER_AUTH_URL 填錯時，部署出去的登入是壞的，所以在 migration 之前先擋下。
+//   - BETTER_AUTH_URL 讀 wrangler.jsonc 該環境的 vars，並確認等於該環境 Web 的自訂網域
+//   - secrets 讀 `wrangler secret list --env <env>`（值是 write-only，只能檢查名稱存在；需要 CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID）
 // 用法：bun scripts/check-auth-deploy.ts <preview|production>
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
-import { findMissingAuthSettings } from "../src/auth/deploy-check";
+import { checkAuthDeploy, parseSecretList, WEB_ORIGINS, type DeployEnv } from "../src/auth/deploy-check";
 
-const deployEnv = process.argv[2];
-if (deployEnv !== "preview" && deployEnv !== "production") {
+const arg = process.argv[2];
+if (arg !== "preview" && arg !== "production") {
   console.error("用法：bun scripts/check-auth-deploy.ts <preview|production>");
   process.exit(2);
 }
+const deployEnv: DeployEnv = arg;
 
 const appDir = path.resolve(import.meta.dirname, "..");
 const parsed = ts.parseConfigFileTextToJson(
@@ -30,18 +31,24 @@ if (listed.exitCode !== 0) {
   console.error(listed.stderr.toString());
   process.exit(1);
 }
-const secretNames = (JSON.parse(listed.stdout.toString()) as { name: string }[]).map((s) => s.name);
+let secretNames: string[];
+try {
+  secretNames = parseSecretList(listed.stdout.toString());
+} catch (error) {
+  console.error(`::error::${error instanceof Error ? error.message : String(error)}`);
+  process.exit(1);
+}
 
-const missing = findMissingAuthSettings({
+const problems = checkAuthDeploy({
+  deployEnv,
   authUrl: typeof authUrl === "string" ? authUrl : undefined,
   secretNames,
 });
-if (missing.length > 0) {
+if (problems.length > 0) {
   console.error(
-    `::error::${deployEnv} 的會員登入設定不完整，App Worker 部署後會載入失敗，已中止（尚未套用 migration）。缺少：${missing.join("、")}。` +
-      "BETTER_AUTH_URL 填在 apps/app/wrangler.jsonc，其餘用 `wrangler secret put <名稱> --env " +
-      `${deployEnv}` +
-      "` 設定，見 README「會員登入」。",
+    `::error::${deployEnv} 的會員登入設定有問題，已中止（尚未套用 migration）：${problems.join("；")}。` +
+      `BETTER_AUTH_URL 填在 apps/app/wrangler.jsonc（${WEB_ORIGINS[deployEnv]}），` +
+      `secret 用 \`wrangler secret put <名稱> --env ${deployEnv}\` 設定，見 README「會員登入」。`,
   );
   process.exit(1);
 }

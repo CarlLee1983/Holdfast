@@ -38,7 +38,7 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - run: bun install --frozen-lockfile
 
-      # 會員登入設定不全時 App Worker 會載入失敗；在 migration 之前擋下，才不會 migrate 完卻部署不了
+      # 會員登入設定不全或 BETTER_AUTH_URL 填錯時，部署出去的登入是壞的；在 migration 之前擋下
       - name: 檢查會員登入設定（${{ env.DEPLOY_ENV }}）
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

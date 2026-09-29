@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { parseAuthConfig } from "../src/auth/config";
-import { findMissingAuthSettings } from "../src/auth/deploy-check";
+import { checkAuthDeploy, parseSecretList } from "../src/auth/deploy-check";
 
 const VALID = {
   BETTER_AUTH_SECRET: "test-secret-test-secret-test-secret-0000",
@@ -60,7 +60,7 @@ describe("parseAuthConfig", () => {
   });
 });
 
-describe("findMissingAuthSettings（部署前檢查）", () => {
+describe("checkAuthDeploy（部署前檢查）", () => {
   const ALL_SECRETS = [
     "BETTER_AUTH_SECRET",
     "GOOGLE_CLIENT_ID",
@@ -68,34 +68,70 @@ describe("findMissingAuthSettings（部署前檢查）", () => {
     "LINE_CHANNEL_ID",
     "LINE_CHANNEL_SECRET",
   ];
+  const PREVIEW_URL = "https://holdfast-preview.gravito.dev";
+  const PRODUCTION_URL = "https://holdfast.gravito.dev";
 
-  it("URL 與所有 secrets 都有時沒有缺漏", () => {
+  it("URL 是該環境的 Web 網域、secrets 齊全時沒有問題", () => {
     expect(
-      findMissingAuthSettings({ authUrl: "https://holdfast.example", secretNames: ALL_SECRETS }),
+      checkAuthDeploy({ deployEnv: "preview", authUrl: PREVIEW_URL, secretNames: ALL_SECRETS }),
+    ).toEqual([]);
+    expect(
+      checkAuthDeploy({ deployEnv: "production", authUrl: PRODUCTION_URL, secretNames: ALL_SECRETS }),
     ).toEqual([]);
   });
 
   it("BETTER_AUTH_URL 空字串或未宣告都算缺", () => {
-    expect(findMissingAuthSettings({ authUrl: "", secretNames: ALL_SECRETS })).toEqual([
-      "BETTER_AUTH_URL",
-    ]);
-    expect(findMissingAuthSettings({ authUrl: undefined, secretNames: ALL_SECRETS })).toEqual([
-      "BETTER_AUTH_URL",
-    ]);
+    for (const authUrl of ["", undefined]) {
+      expect(checkAuthDeploy({ deployEnv: "preview", authUrl, secretNames: ALL_SECRETS })).toEqual([
+        "缺少 BETTER_AUTH_URL",
+      ]);
+    }
+  });
+
+  it("BETTER_AUTH_URL 不等於該環境的 Web 網域時指出期望值", () => {
+    for (const authUrl of [
+      PRODUCTION_URL, // 貼到別的環境
+      "http://localhost:4321",
+      `${PREVIEW_URL}/`, // 結尾斜線會讓 redirect_uri 對不上
+      "https://holdfast-preview.gravito.dev:8443",
+    ]) {
+      expect(checkAuthDeploy({ deployEnv: "preview", authUrl, secretNames: ALL_SECRETS })).toEqual([
+        `BETTER_AUTH_URL 應為 ${PREVIEW_URL}，目前是 ${authUrl}`,
+      ]);
+    }
   });
 
   it("列出所有沒有設定的 secret", () => {
     expect(
-      findMissingAuthSettings({
-        authUrl: "https://holdfast.example",
+      checkAuthDeploy({
+        deployEnv: "production",
+        authUrl: PRODUCTION_URL,
         secretNames: ["BETTER_AUTH_SECRET", "GOOGLE_CLIENT_ID"],
       }),
-    ).toEqual(["GOOGLE_CLIENT_SECRET", "LINE_CHANNEL_ID", "LINE_CHANNEL_SECRET"]);
+    ).toEqual(["缺少 GOOGLE_CLIENT_SECRET", "缺少 LINE_CHANNEL_ID", "缺少 LINE_CHANNEL_SECRET"]);
   });
 
   it("與 parseAuthConfig 要求的 secrets 是同一份清單", () => {
     expect(
-      findMissingAuthSettings({ authUrl: "https://holdfast.example", secretNames: [] }),
-    ).toEqual(ALL_SECRETS);
+      checkAuthDeploy({ deployEnv: "production", authUrl: PRODUCTION_URL, secretNames: [] }),
+    ).toEqual(ALL_SECRETS.map((name) => `缺少 ${name}`));
+  });
+});
+
+describe("parseSecretList（wrangler secret list --format json）", () => {
+  it("取出 secret 名稱，忽略其他欄位", () => {
+    expect(
+      parseSecretList('[{"name":"BETTER_AUTH_SECRET","type":"secret_text"},{"name":"LINE_CHANNEL_ID"}]'),
+    ).toEqual(["BETTER_AUTH_SECRET", "LINE_CHANNEL_ID"]);
+    expect(parseSecretList("[]")).toEqual([]);
+  });
+
+  it.each([
+    ["不是 JSON", "Error: not logged in"],
+    ["不是陣列", '{"name":"X"}'],
+    ["元素沒有 name", '[{"id":"X"}]'],
+    ["name 不是字串", '[{"name":1}]'],
+  ])("%s：丟出錯誤，不當作沒有 secret", (_label, output) => {
+    expect(() => parseSecretList(output)).toThrow();
   });
 });
