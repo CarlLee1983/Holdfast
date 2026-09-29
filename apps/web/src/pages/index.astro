@@ -2,8 +2,9 @@
 import MemberLayout from "../layouts/MemberLayout.astro";
 import { env } from "cloudflare:workers";
 import { loadCatalog } from "../catalog/load-catalog";
-import { hasStarted } from "../catalog/slot-status";
-import { formatTaipeiDate, formatTaipeiTime } from "../catalog/taipei-time";
+import { flattenCatalog, groupSlotsByTaipeiDate } from "../catalog/group-slots-by-date";
+import { slotAvailability } from "../catalog/slot-status";
+import { formatTaipeiTime } from "../catalog/taipei-time";
 import { loginUrl } from "../auth/member";
 import { handleHoldPost } from "../holds/submit";
 
@@ -21,63 +22,123 @@ if (Astro.request.method === "POST") {
 
 const catalog = await loadCatalog(env.APP);
 const now = Date.now();
+
+// 各資源的時段攤平後依台北日期分組
+const STATUS_LABEL = { started: "已開始／不可預訂", full: "已額滿", open: "尚未開始" } as const;
+const dateGroups = groupSlotsByTaipeiDate(flattenCatalog(catalog));
 ---
 
 <MemberLayout title="時段列表">
   <h1>Holdfast 訂位</h1>
   {holdError && <p role="alert">{holdError}</p>}
   <p>時間皆為台北時間。</p>
-  {catalog.length === 0 && <p>目前沒有資源。</p>}
+  {dateGroups.length === 0 && <p>目前沒有尚未結束的時段。</p>}
   {
-    catalog.map(({ resource, slots }) => (
-      <section>
-        <h2>{resource.name}</h2>
-        <p>單筆名額上限：{resource.seatsPerHold}</p>
-        {slots.length === 0 ? (
-          <p>目前沒有尚未結束的時段。</p>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>日期</th>
-                <th>時間</th>
-                <th>剩餘名額</th>
-                <th>狀態</th>
-                <th>保留</th>
-              </tr>
-            </thead>
-            <tbody>
-              {slots.map((slot) => (
-                <tr>
-                  <td>{formatTaipeiDate(slot.startsAt)}</td>
-                  <td>
+    dateGroups.map((group) => (
+      <section aria-labelledby={`day-${group.date}`}>
+        <h2 id={`day-${group.date}`}>{group.heading}</h2>
+        <ul class="slot-list">
+          {group.slots.map((slot) => {
+            // 伺服器把超占的剩餘名額以 0 回傳，不會是負數；這裡只是 UI 提示，是否額滿仍由 App Worker 判定
+            const availability = slotAvailability(slot.startsAt, slot.remainingSeats, now);
+            return (
+              <li>
+                <article class="slot-card" aria-labelledby={`slot-${slot.id}-title slot-${slot.id}-time`}>
+                  <header class="slot-head">
+                    <h3 id={`slot-${slot.id}-title`}>{slot.resourceName}</h3>
+                    <span class:list={["badge", { muted: availability !== "open" }]}>
+                      {STATUS_LABEL[availability]}
+                    </span>
+                  </header>
+                  <p class="slot-time" id={`slot-${slot.id}-time`}>
                     {formatTaipeiTime(slot.startsAt)}–{formatTaipeiTime(slot.endsAt)}
-                  </td>
-                  <td>
-                    {slot.remainingSeats} / {slot.capacity}
-                  </td>
-                  <td>{hasStarted(slot.startsAt, now) ? "已開始／不可預訂" : "尚未開始"}</td>
-                  <td>
-                    {hasStarted(slot.startsAt, now) ? null : member ? (
-                      <form method="post">
-                        <input type="hidden" name="slotId" value={slot.id} />
-                        <input type="hidden" name="idempotencyKey" value={crypto.randomUUID()} />
-                        <label>
-                          名額
-                          <input type="number" name="seats" min="1" max={resource.seatsPerHold} value="1" required />
-                        </label>
-                        <button type="submit">保留</button>
-                      </form>
-                    ) : (
-                      <a href={loginUrl(Astro.url)}>登入後保留</a>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+                  </p>
+                  <p class="slot-seats">
+                    剩餘名額 {slot.remainingSeats} / {slot.capacity}
+                  </p>
+                  {availability !== "open" ? null : member ? (
+                    <form method="post" class="hold-form">
+                      <input type="hidden" name="slotId" value={slot.id} />
+                      <input type="hidden" name="idempotencyKey" value={crypto.randomUUID()} />
+                      <label>
+                        名額
+                        <input type="number" name="seats" min="1" max={slot.seatsPerHold} value="1" required />
+                      </label>
+                      <button type="submit">保留</button>
+                    </form>
+                  ) : (
+                    <a href={loginUrl(Astro.url)}>登入後保留</a>
+                  )}
+                </article>
+              </li>
+            );
+          })}
+        </ul>
       </section>
     ))
   }
 </MemberLayout>
+
+<style>
+  .slot-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--space-3);
+  }
+  .slot-card {
+    padding: var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--background);
+    box-shadow: var(--shadow);
+  }
+  .slot-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: var(--space-3);
+  }
+  .slot-head h3 {
+    margin: 0;
+    font-size: var(--text-base);
+  }
+  .badge {
+    flex-shrink: 0;
+    padding: 0 var(--space-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: var(--text-sm);
+    background: var(--background);
+    color: var(--foreground);
+  }
+  .badge.muted {
+    background: var(--muted);
+    color: var(--muted-foreground);
+  }
+  .slot-time {
+    margin: var(--space-2) 0 0;
+    font-size: var(--text-lg);
+    font-variant-numeric: tabular-nums;
+  }
+  .slot-seats {
+    margin: 0 0 var(--space-3);
+    font-size: var(--text-sm);
+    color: var(--muted-foreground);
+  }
+  .hold-form {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+  }
+  .hold-form label {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .hold-form input[type="number"] {
+    width: 5rem;
+  }
+</style>
