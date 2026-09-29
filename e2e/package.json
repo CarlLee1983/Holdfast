@@ -1,0 +1,17 @@
+{
+  "name": "@holdfast/e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@holdfast/app": "workspace:*",
+    "@playwright/test": "^1.63.0",
+    "@types/bun": "^1.4.2",
+    "@types/node": "^26.6.3",
+    "typescript": "^6",
+    "wrangler": "^4.143.0"
+  }
+}
