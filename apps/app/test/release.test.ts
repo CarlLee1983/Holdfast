@@ -2,7 +2,7 @@ import { env, exports } from "cloudflare:workers";
 import { createExecutionContext, createScheduledController } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { setNow } from "./clock";
-import { insertResource, insertSlot, resetDb } from "./db";
+import { insertResource, insertSlot, insertUser, resetDb } from "./db";
 import { AppEntrypoint } from "../src/entrypoint";
 
 const NOW = Date.UTC(2030, 0, 1);
@@ -15,6 +15,7 @@ let slotId: number;
 beforeEach(async () => {
   await resetDb();
   setNow(NOW);
+  await Promise.all(["m1", "m2"].map(insertUser));
   resourceId = await insertResource({ name: "大廳", holdTtlSeconds: TTL / 1000 });
   slotId = await insertSlot(resourceId, NOW + 3_600_000, NOW + 7_200_000, 10);
 });

@@ -19,7 +19,7 @@ import {
   type MyBooking,
   type MyHold,
 } from "./queries";
-import { CONFIRMED, HELD, RELEASED } from "./schema";
+import { CANCELLED, CONFIRMED, HELD, RELEASED } from "./schema";
 
 export type CreateHoldResult =
   | Result<
@@ -124,6 +124,9 @@ export function createHoldService(d1: D1Database, clock: Clock) {
         case RELEASED:
           // 釋放只會發生在到期之後（#9），對會員而言同樣是已到期
           return fail("hold_expired");
+        case CANCELLED:
+          // 訂位已被取消，等同這筆保留不存在
+          return fail("hold_not_found");
         default: {
           const unhandled: never = own.status;
           throw new Error(`未處理的保留狀態：${String(unhandled)}`);
