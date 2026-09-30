@@ -82,5 +82,6 @@ test("選人數與日期後，時段依條件出現或消失", async ({ page }) 
   await chooseOption(page, "用餐人數", "6");
   await expect(page.getByRole("button", { name: /大廳用餐/ })).toHaveCount(0);
   await expect(page.getByText("大廳用餐最多 4 位，這個人數不列出它的時段。")).toBeVisible();
-  await expect(page.getByRole("button", { name: "19:00 包廂", exact: true })).toBeVisible();
+  // 只驗包廂仍被列出：其他 spec 並行保留同一時段，剩餘位數可能少於 6 而顯示「剩 N 位」並停用，那不是這則要驗的
+  await expect(page.getByRole("button", { name: /^19:00 包廂/ })).toBeVisible();
 });
