@@ -103,7 +103,17 @@ describe("retired resource behavior", () => {
     expect(await app.listSlots(resourceId)).toEqual({ ok: true, data: [] });
     expect(await newHold("other", slotId, "new")).toEqual({ ok: false, reason: "resource_retired" });
     expect(await app.createSlot(jwt, newSlot(resourceId))).toEqual({ ok: false, reason: "resource_retired" });
-    expect(await app.listMyHolds("member")).toMatchObject({ ok: true, data: [{ id: pending.data.id }] });
+    expect(await app.listMyHolds("member")).toMatchObject({
+      ok: true,
+      data: [{
+        id: pending.data.id,
+        slotId: pending.data.slotId,
+        resourceName: "包廂",
+        resourceDescription: null,
+        holdTtlSeconds: 600,
+        cancellationCutoffSeconds: 3600,
+      }],
+    });
     expect(await newHold("member", pending.data.slotId, "pending")).toEqual(pending);
     expect((await app.confirmHold("member", { holdId: pending.data.id })).ok).toBe(true);
     expect(await app.listMyBookings("member")).toMatchObject({ ok: true, data: [{ id: booking.data.id }, { id: pending.data.id }] });
