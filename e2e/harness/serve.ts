@@ -1,17 +1,20 @@
 /**
  * E2E 的受測伺服器（Playwright 的 webServer 啟動它）：
- * 重建 E2E 專用的狀態 → 建置 Web → 套用 migration 與 seed → 寫入測試會員的 session（含一個專供登出測試的，以及倒數、防重複送出、無 JS、確認頁別人的保留測試各自專用的會員） → 以 `wrangler dev` 跑兩個 Worker。
+ * 重建 E2E 專用的狀態 → 建置 Web → 套用 migration 與 seed → 產生管理者的 Access JWT 與內嵌 JWKS → 寫入測試會員的 session（含一個專供登出測試的，以及倒數、防重複送出、無 JS、確認頁別人的保留、管理者取消訂位測試各自專用的會員） → 以 `wrangler dev` 跑兩個 Worker。
  *
  * 不碰開發者的本機狀態：D1 放在 `.wrangler/e2e/state`；Web 建置到 `.wrangler/e2e/web`（不覆寫 `apps/web/dist`）；
  * 兩個 Worker 的設定檔旁都放 E2E 自己的 `.dev.vars`（wrangler 只讀設定檔旁的 `.dev.vars`，
  * `--env-file` 只套用到第一個 Worker；Astro 建置會把 `apps/web/.dev.vars` 複製到輸出目錄，所以建置後覆寫）。
  * 產生的設定檔只改路徑與 `BETTER_AUTH_URL`，其餘沿用 `apps/app/wrangler.jsonc` 的頂層設定——
  * App 的程式碼與設定都不為 E2E 修改（ADR 0013）。
+ * 管理後台：E2E 跑的是 production 建置，`ACCESS_DEV_JWT` 在其中不會被讀取，所以不讓 Web 帶它；
+ * 改由管理者的瀏覽器 context 送 `Cf-Access-Jwt-Assertion`（與 Cloudflare Access 相同），App 以內嵌 JWKS（`local.invalid`）驗簽。請勿改回 `ACCESS_DEV_JWT`。
  */
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { experimental_readRawConfig } from "wrangler";
-import { AUTH_SECRET, BASE_URL, COUNTDOWN_MEMBER, COUNTDOWN_SESSION, DOUBLE_SUBMIT_MEMBER, DOUBLE_SUBMIT_SESSION, HOLD_OWNER_MEMBER, HOLD_OWNER_SESSION, LOGIN_RESUME_MEMBER, LOGIN_RESUME_SESSION, MEMBER, NO_JS_MEMBER, NO_JS_SESSION, PORT, SESSION, SIGN_OUT_SESSION } from "./constants";
+import { createAdminAccess } from "./admin-access";
+import { ADMIN_CANCEL_MEMBER, ADMIN_CANCEL_SESSION, AUTH_SECRET, BASE_URL, COUNTDOWN_MEMBER, COUNTDOWN_SESSION, DOUBLE_SUBMIT_MEMBER, DOUBLE_SUBMIT_SESSION, HOLD_OWNER_MEMBER, HOLD_OWNER_SESSION, LOGIN_RESUME_MEMBER, LOGIN_RESUME_SESSION, MEMBER, NO_JS_MEMBER, NO_JS_SESSION, PORT, SESSION, SIGN_OUT_SESSION } from "./constants";
 
 const ROOT = resolve(import.meta.dirname, "../..");
 const APP_DIR = join(ROOT, "apps/app");
@@ -28,7 +31,7 @@ function run(cmd: string[], cwd: string): void {
 }
 
 /** App 的 E2E 設定：頂層設定（不含 preview／production 環境），路徑改成絕對路徑。 */
-function writeAppConfig(): void {
+async function writeAppConfig(): Promise<void> {
   const { rawConfig } = experimental_readRawConfig({ config: join(APP_DIR, "wrangler.jsonc") });
   const { env: _environments, $schema: _schema, ...topLevel } = rawConfig as Record<string, unknown> & {
     main?: string;
@@ -55,6 +58,7 @@ function writeAppConfig(): void {
       "GOOGLE_CLIENT_SECRET=e2e",
       "LINE_CHANNEL_ID=e2e",
       "LINE_CHANNEL_SECRET=e2e",
+      ...(await createAdminAccess()),
     ].join("\n"),
   );
 }
@@ -74,6 +78,7 @@ function insertMemberSession(): void {
     { member: NO_JS_MEMBER, sessions: [NO_JS_SESSION] },
     { member: HOLD_OWNER_MEMBER, sessions: [HOLD_OWNER_SESSION] },
     { member: LOGIN_RESUME_MEMBER, sessions: [LOGIN_RESUME_SESSION] },
+    { member: ADMIN_CANCEL_MEMBER, sessions: [ADMIN_CANCEL_SESSION] },
   ];
   const sql = members
     .map(
@@ -92,7 +97,7 @@ function insertMemberSession(): void {
 }
 
 rmSync(E2E_DIR, { recursive: true, force: true });
-writeAppConfig();
+await writeAppConfig();
 run(["bunx", "astro", "build", "--outDir", WEB_OUT], WEB_DIR);
 writeFileSync(join(WEB_OUT, "server/.dev.vars"), "");
 d1(["migrations", "apply"]);
