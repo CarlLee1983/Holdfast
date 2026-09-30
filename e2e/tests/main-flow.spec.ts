@@ -12,7 +12,7 @@ test("會員主流程：登入 → 看到時段 → 保留 → 確認 → 會員
   // 而取消截止是開始前 2 小時，所以後面的取消一定在截止前；改 seed 時要維持這個前提
   await page.goto("/");
   // 時段依台北日期分組，每組有含星期的日期標題（例如「9/30（週三）」）
-  await expect(page.getByRole("heading", { level: 2, name: /^\d{1,2}\/\d{1,2}（週.）$/ }).first()).toBeVisible();
+  await expect(page.getByRole("heading", { level: 3, name: /^\d{1,2}\/\d{1,2}（週.）$/ }).first()).toBeVisible();
   await expect(page.getByRole("article", { name: "包廂" }).first()).toBeVisible();
   // 保留的時段見 harness/slots.ts
   const lobby = holdableSlot(page, "main");

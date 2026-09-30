@@ -31,17 +31,21 @@ if (Astro.request.method === "POST") {
   <form method="post">
     <button type="submit" class="destructive">確認刪除帳號</button>
   </form>
-  <p><a href="/me">返回我的保留與訂位</a></p>
+  <p class="meta"><a href="/me">返回我的保留與訂位</a></p>
 </MemberLayout>
 
 <style>
   .warning {
-    padding: var(--space-3) var(--space-4);
-    border: 1px solid var(--destructive);
+    padding: var(--space-sm) var(--space-md);
+    border: 1px solid var(--color-danger);
     border-radius: var(--radius);
-    color: var(--destructive);
+    color: var(--color-danger);
+    font-size: var(--text-sm);
+  }
+  .warning strong {
+    font-weight: 500;
   }
   form {
-    margin-block: var(--space-6);
+    margin-block: var(--space-xs);
   }
 </style>
