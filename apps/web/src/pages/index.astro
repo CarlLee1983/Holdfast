@@ -8,6 +8,7 @@ import { formatTaipeiTime } from "../catalog/taipei-time";
 import { loginUrl } from "../auth/member";
 import { handleHoldPost } from "../holds/submit";
 import { cancellationRuleText } from "../holds/cancellation";
+import { MERCHANT } from "../merchant/merchant";
 
 export const prerender = false;
 
@@ -29,33 +30,49 @@ const STATUS_LABEL = { started: "已開始／不可預訂", full: "已額滿", o
 const dateGroups = groupSlotsByTaipeiDate(flattenCatalog(catalog));
 ---
 
-<MemberLayout title="時段列表">
-  <h1>Holdfast 訂位</h1>
+<MemberLayout title="線上訂位" cover>
+  <section class="panel" aria-labelledby="store" slot="intro">
+    <h1 id="store">{MERCHANT.name.zh}<span class="latin">{MERCHANT.name.latin}</span></h1>
+    <p>{MERCHANT.intro}</p>
+    <dl class="facts">
+      <dt>地址</dt>
+      <dd>{MERCHANT.address}</dd>
+      <dt>營業</dt>
+      <dd>
+        {MERCHANT.hours.days}<br />
+        <span class="numeric">{MERCHANT.hours.periods.join("・")}</span>
+      </dd>
+      <dt>公休</dt>
+      <dd>{MERCHANT.closedDays}</dd>
+    </dl>
+  </section>
+
+  <h2 id="booking-title">線上訂位</h2>
   {holdError && <p role="alert">{holdError}</p>}
-  <p>時間皆為台北時間。</p>
-  {dateGroups.length === 0 && <p>目前沒有尚未結束的時段。</p>}
+  <p class="meta">時間皆為台北時間。</p>
+  {dateGroups.length === 0 && <p class="empty">目前沒有尚未結束的時段。</p>}
   {
     dateGroups.map((group) => (
-      <section aria-labelledby={`day-${group.date}`}>
-        <h2 id={`day-${group.date}`}>{group.heading}</h2>
-        <ul class="card-list">
+      <section class="list-section" aria-labelledby={`day-${group.date}`}>
+        <h3 class="eyebrow" id={`day-${group.date}`}>{group.heading}</h3>
+        <ul class="rule-list">
           {group.slots.map((slot) => {
             // 伺服器把超占的剩餘名額以 0 回傳，不會是負數；這裡只是 UI 提示，是否額滿仍由 App Worker 判定
             const availability = slotAvailability(slot.startsAt, slot.remainingSeats, now);
             return (
               <li>
-                <article class="card" aria-labelledby={`slot-${slot.id}-title slot-${slot.id}-time`}>
-                  <header class="card-head">
-                    <h3 id={`slot-${slot.id}-title`}>{slot.resourceName}</h3>
-                    <span class:list={["badge", { "badge--muted": availability !== "open" }]}>
+                <article class="rule-item" aria-labelledby={`slot-${slot.id}-title slot-${slot.id}-time`}>
+                  <div class="rule-head">
+                    <p class="slot-time numeric" id={`slot-${slot.id}-time`}>
+                      {formatTaipeiTime(slot.startsAt)}–{formatTaipeiTime(slot.endsAt)}
+                    </p>
+                    <span class:list={["tag", { "tag--quiet": availability !== "open" }]}>
                       {STATUS_LABEL[availability]}
                     </span>
-                  </header>
-                  <p class="slot-time" id={`slot-${slot.id}-time`}>
-                    {formatTaipeiTime(slot.startsAt)}–{formatTaipeiTime(slot.endsAt)}
-                  </p>
-                  <p class="slot-seats">
-                    剩餘名額 {slot.remainingSeats} / {slot.capacity}
+                  </div>
+                  <h4 class="rule-title" id={`slot-${slot.id}-title`}>{slot.resourceName}</h4>
+                  <p class="meta">
+                    剩餘名額 <span class="numeric">{slot.remainingSeats} / {slot.capacity}</span>
                   </p>
                   {availability !== "open" ? null : member ? (
                     <form method="post" class="hold-form">
@@ -68,7 +85,9 @@ const dateGroups = groupSlotsByTaipeiDate(flattenCatalog(catalog));
                       <button type="submit">保留</button>
                     </form>
                   ) : (
-                    <a href={loginUrl(Astro.url)}>登入後保留</a>
+                    <p>
+                      <a href={loginUrl(Astro.url)}>登入後保留</a>
+                    </p>
                   )}
                 </article>
               </li>
@@ -80,14 +99,14 @@ const dateGroups = groupSlotsByTaipeiDate(flattenCatalog(catalog));
   }
   {
     catalog.length > 0 && (
-      <section aria-labelledby="notes-heading">
+      <section class="list-section" aria-labelledby="notes-heading">
         <h2 id="notes-heading">訂位須知</h2>
-        <ul>
+        <ul class="rule-list">
           {catalog.map(({ resource }) => (
-            <li>
-              <h3>{resource.name}</h3>
+            <li class="rule-item">
+              <h3 class="rule-title">{resource.name}</h3>
               {resource.description && <p>{resource.description}</p>}
-              <p>{cancellationRuleText(resource.cancellationCutoffSeconds)}</p>
+              <p class="meta">{cancellationRuleText(resource.cancellationCutoffSeconds)}</p>
             </li>
           ))}
         </ul>
@@ -97,28 +116,74 @@ const dateGroups = groupSlotsByTaipeiDate(flattenCatalog(catalog));
 </MemberLayout>
 
 <style>
-  .slot-time {
-    margin: var(--space-2) 0 0;
-    font-size: var(--text-lg);
-    font-variant-numeric: tabular-nums;
+  /* 店家面板：墨綠大色塊，置中店名、靠左內文 */
+  .panel {
+    display: grid;
+    gap: var(--space-lg);
+    padding: var(--space-2xl) var(--space-lg) var(--space-xl);
+    background: var(--color-brand);
+    color: var(--color-on-brand);
   }
-  .slot-seats {
-    margin: 0 0 var(--space-3);
+  .panel h1 {
+    text-align: center;
+    letter-spacing: 0.24em;
+  }
+  .panel h1 .latin {
+    display: block;
+    margin-top: var(--space-2xs);
+    font-weight: 500;
+    font-size: var(--text-md);
+    letter-spacing: 0.08em;
+    color: var(--color-on-brand-muted);
+  }
+  .panel p {
+    max-width: 34em;
     font-size: var(--text-sm);
-    color: var(--muted-foreground);
+  }
+  .facts {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: var(--space-2xs) var(--space-md);
+    margin: 0;
+    padding-top: var(--space-md);
+    border-top: 1px solid var(--color-brand-2);
+    font-size: var(--text-sm);
+  }
+  .facts dt {
+    color: var(--color-on-brand-muted);
+  }
+  .facts dd {
+    margin: 0;
+  }
+
+  .slot-time {
+    font-size: var(--text-md);
+    font-weight: 500;
   }
   .hold-form {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: var(--space-3);
+    gap: var(--space-sm);
+    margin-top: var(--space-xs);
   }
   .hold-form label {
     display: flex;
     align-items: center;
-    gap: var(--space-2);
+    gap: var(--space-xs);
   }
   .hold-form input[type="number"] {
     width: 5rem;
+  }
+
+  @media (min-width: 40rem) {
+    .panel {
+      padding-inline: var(--space-2xl);
+    }
+  }
+  @media (min-width: 64rem) {
+    .panel {
+      padding-block: var(--space-3xl) var(--space-2xl);
+    }
   }
 </style>
