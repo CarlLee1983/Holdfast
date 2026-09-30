@@ -1,6 +1,117 @@
 ---
-// 後台入口導向資源列表；日程表首頁由 #67 的後續工單取代這個導向
+// 後台首頁：單日日程表（依台北時間切日）；日期與資源篩選都是一般 GET 參數，不需要 JS
+import { env } from "cloudflare:workers";
+import { readAccessJwt } from "../../admin/access-jwt";
+import { adjacentDateKey, parseDateParam, parseResourceParam, taipeiDayRange } from "../../admin/agenda-date";
+import { formatTaipeiDate, formatTaipeiDateTime, formatTaipeiTime, taipeiDateKey } from "../../catalog/taipei-time";
+import { DELETED_MEMBER_LABEL } from "../../admin/slot-holds-and-bookings";
+import AccessDenied from "../../components/AccessDenied.astro";
+import AdminLayout from "../../layouts/AdminLayout.astro";
+
 export const prerender = false;
 
-return Astro.redirect("/admin/resources", 302);
+// 授權完全由 App Worker 驗 JWT 決定；這裡只轉交 header，收到 unauthorized 就顯示 403
+const jwt = readAccessJwt(Astro.request, env, import.meta.env.DEV);
+const params = Astro.url.searchParams;
+const dateKey = parseDateParam(params.get("date"), taipeiDateKey(Date.now()));
+const resourceId = parseResourceParam(params.get("resource"));
+const range = taipeiDayRange(dateKey);
+
+const [agenda, resources] = await Promise.all([
+  env.APP.listAgendaForAdmin(jwt, { ...range, resourceId }),
+  env.APP.listResourcesForAdmin(jwt),
+]);
+const unauthorized =
+  (!agenda.ok && agenda.reason === "unauthorized") || (!resources.ok && resources.reason === "unauthorized");
+const agendaFailed = !unauthorized && !agenda.ok;
+const resourcesFailed = !unauthorized && !resources.ok;
+if (unauthorized) Astro.response.status = 403;
+else if (agendaFailed) Astro.response.status = 500;
+
+const slots = agenda.ok ? agenda.data : [];
+const resourceList = resources.ok ? resources.data : [];
+// 前後一天的連結保留資源篩選
+const dayHref = (key: string) => `/admin?date=${key}${resourceId === undefined ? "" : `&resource=${resourceId}`}`;
+// 保留到期若不在正在看的這一天，補上日期，免得只有 HH:mm 讀成當天
+const expiryLabel = (at: number) => (at >= range.from && at < range.to ? formatTaipeiTime(at) : formatTaipeiDateTime(at));
+// 篩選了資源時，空狀態直接連到該資源的頁面建立時段
+const createSlotHref = resourceId === undefined ? "/admin/resources" : `/admin/resources/${resourceId}`;
 ---
+
+<AdminLayout title="日程表">
+  {
+    unauthorized ? (
+      <AccessDenied />
+    ) : (
+      <>
+        <nav class="agenda-nav" aria-label="切換日期">
+          <a href={dayHref(adjacentDateKey(dateKey, -1))}>前一天</a>
+          <h2>{formatTaipeiDate(range.from)}</h2>
+          <a href={dayHref(adjacentDateKey(dateKey, 1))}>後一天</a>
+        </nav>
+        {resourcesFailed && <p class="error" role="alert">資源清單暫時無法載入，無法依資源篩選。</p>}
+        <form class="agenda-filter" method="get" action="/admin">
+          <label>日期<input type="date" name="date" value={dateKey} required /></label>
+          <label>
+            資源
+            <select name="resource">
+              <option value="">全部資源</option>
+              {resourceList.map((r) => <option value={r.id} selected={r.id === resourceId}>{r.name}</option>)}
+            </select>
+          </label>
+          <button type="submit">顯示</button>
+        </form>
+        {
+          !agenda.ok ? (
+            <p class="error" role="alert">日程表暫時無法載入。</p>
+          ) : slots.length === 0 ? (
+            <p>這一天沒有時段。<a href={createSlotHref}>到資源頁建立時段</a></p>
+          ) : (
+            <ol class="agenda">
+              {slots.map((slot) => (
+                <li class="agenda-slot">
+                  <div class="agenda-head">
+                    <a class="agenda-time" href={`/admin/slots/${slot.id}`}>
+                      {formatTaipeiTime(slot.startsAt)}–{formatTaipeiTime(slot.endsAt)}
+                    </a>
+                    <span>{slot.resourceName}</span>
+                    <span class="agenda-count">{slot.occupied}／{slot.capacity}（剩 {slot.remainingSeats}）</span>
+                    {slot.overcommitted && <span class="tag agenda-over">超占</span>}
+                  </div>
+                  {
+                    slot.bookings.length + slot.holds.length + slot.cancelledBookings.length > 0 && (
+                      <ul class="agenda-people">
+                        {slot.bookings.map((b) => (
+                          <li>
+                            <span>{b.memberName ?? DELETED_MEMBER_LABEL}</span>
+                            <span>{b.seats} 位</span>
+                          </li>
+                        ))}
+                        {slot.holds.map((h) => (
+                          <li class="agenda-held">
+                            <span>{h.memberName ?? DELETED_MEMBER_LABEL}</span>
+                            <span>{h.seats} 位</span>
+                            <span class="tag tag--quiet">保留中</span>
+                            <span>到期 {expiryLabel(h.expiresAt)}</span>
+                          </li>
+                        ))}
+                        {slot.cancelledBookings.map((c) => (
+                          <li class="agenda-cancelled">
+                            <span>{c.memberName ?? DELETED_MEMBER_LABEL}</span>
+                            <span>{c.seats} 位</span>
+                            <span class="tag tag--quiet">已取消</span>
+                            <span>{c.cancelledBy === "admin" ? "店家取消" : c.cancelledBy === "member" ? "會員取消" : "已取消"}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )
+                  }
+                </li>
+              ))}
+            </ol>
+          )
+        }
+      </>
+    )
+  }
+</AdminLayout>

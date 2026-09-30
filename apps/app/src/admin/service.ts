@@ -17,13 +17,22 @@ import {
   createSlotInput,
   deleteSlotInput,
   getResourceInput,
+  listAgendaInput,
   listSlotHoldsAndBookingsInput,
   listAuditInput,
   updateResourceInput,
   updateSlotCapacityInput,
   updateSlotTimeInput,
 } from "./input";
-import { selectAdminAudit, selectAdminSlots, slotExists, type AdminAuditRecord, type AdminSlot } from "./queries";
+import {
+  selectAdminAudit,
+  selectAdminSlots,
+  selectAgenda,
+  slotExists,
+  type AdminAuditRecord,
+  type AdminSlot,
+  type AgendaSlot,
+} from "./queries";
 
 export interface SlotRecord {
   id: number;
@@ -327,6 +336,12 @@ export function createAdminService(d1: D1Database, clock: Clock, accessConfig: A
       if (!auth.ok) return auth;
       if (!(await resourceExists(db, resourceId))) return fail("resource_not_found");
       return ok(await selectAdminSlots(db, resourceId, clock.now()));
+    },
+
+    listAgendaForAdmin(jwt: unknown, input: unknown): Promise<AdminResult<AgendaSlot[]>> {
+      return authorized(jwt, listAgendaInput, input, async (_actor, range) =>
+        ok(await selectAgenda(db, range, clock.now())),
+      );
     },
 
     updateSlotCapacity(
