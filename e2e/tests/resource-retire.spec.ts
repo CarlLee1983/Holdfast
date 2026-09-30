@@ -21,13 +21,13 @@ test("停用資源後，自己的有效保留仍可確認", async ({ page, conte
   const key = randomUUID();
   const memberId = `retire-member-${key}`;
   const token = `retire-session-${key}`;
-  const name = `退役測試-${key}`;
+  const name = "停用測試";
   const now = Date.now();
   const startsAt = now + 86_400_000;
   const endsAt = startsAt + 3_600_000;
   const rows = d1(`
     INSERT INTO "user" (id, name, email, email_verified, created_at, updated_at)
-      VALUES ('${memberId}', '退役測試會員', '${key}@members.holdfast.invalid', 0, ${now}, ${now});
+      VALUES ('${memberId}', '停用測試會員', '${key}@members.holdfast.invalid', 0, ${now}, ${now});
     INSERT INTO session (id, expires_at, token, created_at, updated_at, user_id)
       VALUES ('${token}', ${now + 86_400_000}, '${token}', ${now}, ${now}, '${memberId}');
     INSERT INTO resources (name, hold_ttl_seconds, seats_per_hold, cancellation_cutoff_seconds, description)
