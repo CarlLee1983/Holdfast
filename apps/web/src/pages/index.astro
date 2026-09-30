@@ -392,8 +392,10 @@ const dateHeading = dateOptions.find((option) => option.value === date)?.heading
   }
 
   /* ---------- 底部固定摘要列 ---------- */
-  :global(.shell--cover) {
+  /* 摘要列高度掛在 html：捲動邊距也要讓出它，Tab 聚焦或捲入畫面的元素才不會停在摘要列後方 */
+  :global(html:has(.shell--cover)) {
     --bar-h: 8.5rem;
+    scroll-padding-block-end: var(--bar-h);
   }
   /* 頁尾讓出摘要列的高度，才不會被蓋住 */
   :global(.shell--cover .foot) {
@@ -442,7 +444,7 @@ const dateHeading = dateOptions.find((option) => option.value === date)?.heading
   }
 
   @media (min-width: 40rem) {
-    :global(.shell--cover) {
+    :global(html:has(.shell--cover)) {
       --bar-h: 5.5rem;
     }
     .panel {
