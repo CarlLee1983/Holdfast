@@ -85,6 +85,7 @@ export interface AgendaCancelledBooking extends AgendaBooking {
   /** 早於這兩個欄位（migration 0005、0006）的已取消訂位沒有這兩個值，沒有回填。 */
   cancelledBy: "admin" | "member" | null;
   cancelledAt: number | null;
+  cancellationReason: string | null;
 }
 
 export interface AgendaSlot extends AdminSlot {
@@ -137,6 +138,7 @@ export async function selectAgenda(
       expiresAt: holds.expiresAt,
       cancelledBy: holds.cancelledBy,
       cancelledAt: holds.cancelledAt,
+      cancellationReason: holds.cancellationReason,
     })
     .from(holds)
     .leftJoin(user, eq(user.id, holds.memberId))
@@ -161,7 +163,12 @@ export async function selectAgenda(
       if (entry.status === CONFIRMED) {
         result.bookings.push(listed(entry));
       } else if (entry.status === CANCELLED) {
-        result.cancelledBookings.push({ ...listed(entry), cancelledBy: entry.cancelledBy, cancelledAt: entry.cancelledAt });
+        result.cancelledBookings.push({
+          ...listed(entry),
+          cancelledBy: entry.cancelledBy,
+          cancelledAt: entry.cancelledAt,
+          cancellationReason: entry.cancellationReason,
+        });
       } else if (entry.status === HELD) {
         // SQL 已只留下有效保留（activeHold），所以 held 在這裡一定是有效的，不在 TS 重新判斷到期
         result.holds.push({ ...listed(entry), expiresAt: entry.expiresAt });

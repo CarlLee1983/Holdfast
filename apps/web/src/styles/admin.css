@@ -260,3 +260,10 @@ td a {
 .agenda-cancelled span:first-child {
   text-decoration: line-through;
 }
+.cancel-booking {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2xs) var(--space-sm);
+  min-width: 0;
+}

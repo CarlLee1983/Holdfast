@@ -448,6 +448,7 @@ describe("confirmHold（ADR 0003）", () => {
         status: "confirmed",
         cancelledAt: null,
         cancelledBy: null,
+        cancellationReason: null,
         cancellableUntil: NOW + HOUR - 3600 * 1000,
       },
     ]);

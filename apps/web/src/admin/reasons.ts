@@ -13,6 +13,7 @@ const MESSAGES: Record<string, string> = {
   slot_in_use: "時段仍有保留或訂位紀錄（過期或已釋放的保留除外）",
   invalid_input: "輸入有誤，請修正後再送出",
   booking_not_found: "找不到這筆訂位",
+  slot_started: "時段已開始，無法取消",
 };
 
 /** 把管理 RPC 的失敗結果轉成表單上顯示的訊息；`unauthorized` 由頁面另外處理（403）。 */

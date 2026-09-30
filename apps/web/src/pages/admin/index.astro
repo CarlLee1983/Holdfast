@@ -2,10 +2,13 @@
 // 後台首頁：單日日程表（依台北時間切日）；日期與資源篩選都是一般 GET 參數，不需要 JS
 import { env } from "cloudflare:workers";
 import { readAccessJwt } from "../../admin/access-jwt";
+import { handleCancelBookingPost } from "../../admin/cancel-booking";
 import { adjacentDateKey, parseDateParam, parseResourceParam, taipeiDayRange } from "../../admin/agenda-date";
 import { formatTaipeiDate, formatTaipeiDateTime, formatTaipeiTime, taipeiDateKey } from "../../catalog/taipei-time";
+import { slotCancellable } from "../../admin/slot-cancellable";
 import { DELETED_MEMBER_LABEL } from "../../admin/slot-holds-and-bookings";
 import AccessDenied from "../../components/AccessDenied.astro";
+import CancelBookingForm from "../../components/CancelBookingForm.astro";
 import AdminLayout from "../../layouts/AdminLayout.astro";
 
 export const prerender = false;
@@ -16,6 +19,21 @@ const params = Astro.url.searchParams;
 const dateKey = parseDateParam(params.get("date"), taipeiDateKey(Date.now()));
 const resourceId = parseResourceParam(params.get("resource"));
 const range = taipeiDayRange(dateKey);
+// 前後一天的連結保留資源篩選；取消後也回到同一天、同一個篩選
+const dayHref = (key: string) => `/admin?date=${key}${resourceId === undefined ? "" : `&resource=${resourceId}`}`;
+
+let cancelError = "";
+if (Astro.request.method === "POST") {
+  const outcome = await handleCancelBookingPost({
+    jwt,
+    request: Astro.request,
+    app: env.APP,
+    successUrl: (id) => `${dayHref(dateKey)}&cancelled=${id}`,
+  });
+  if ("redirect" in outcome) return Astro.redirect(outcome.redirect, outcome.status);
+  cancelError = outcome.error;
+  Astro.response.status = outcome.status;
+}
 
 const [agenda, resources] = await Promise.all([
   env.APP.listAgendaForAdmin(jwt, { ...range, resourceId }),
@@ -30,8 +48,10 @@ else if (agendaFailed) Astro.response.status = 500;
 
 const slots = agenda.ok ? agenda.data : [];
 const resourceList = resources.ok ? resources.data : [];
-// 前後一天的連結保留資源篩選
-const dayHref = (key: string) => `/admin?date=${key}${resourceId === undefined ? "" : `&resource=${resourceId}`}`;
+const now = Date.now();
+const cancelledId = params.get("cancelled");
+const cancelledNotice =
+  cancelledId !== null && slots.some((slot) => slot.cancelledBookings.some((c) => String(c.id) === cancelledId));
 // 保留到期若不在正在看的這一天，補上日期，免得只有 HH:mm 讀成當天
 const expiryLabel = (at: number) => (at >= range.from && at < range.to ? formatTaipeiTime(at) : formatTaipeiDateTime(at));
 // 篩選了資源時，空狀態直接連到該資源的頁面建立時段
@@ -49,6 +69,8 @@ const createSlotHref = resourceId === undefined ? "/admin/resources" : `/admin/r
           <h2>{formatTaipeiDate(range.from)}</h2>
           <a href={dayHref(adjacentDateKey(dateKey, 1))}>後一天</a>
         </nav>
+        {cancelledNotice && <p class="notice" role="status">訂位已取消，名額已歸還。</p>}
+        {cancelError && <p class="error" role="alert">{cancelError}</p>}
         {resourcesFailed && <p class="error" role="alert">資源清單暫時無法載入，無法依資源篩選。</p>}
         <form class="agenda-filter" method="get" action="/admin">
           <label>日期<input type="date" name="date" value={dateKey} required /></label>
@@ -85,6 +107,7 @@ const createSlotHref = resourceId === undefined ? "/admin/resources" : `/admin/r
                           <li>
                             <span>{b.memberName ?? DELETED_MEMBER_LABEL}</span>
                             <span>{b.seats} 位</span>
+                            {slotCancellable(slot.startsAt, now) && <CancelBookingForm bookingId={b.id} slotId={slot.id} />}
                           </li>
                         ))}
                         {slot.holds.map((h) => (
@@ -101,6 +124,7 @@ const createSlotHref = resourceId === undefined ? "/admin/resources" : `/admin/r
                             <span>{c.seats} 位</span>
                             <span class="tag tag--quiet">已取消</span>
                             <span>{c.cancelledBy === "admin" ? "店家取消" : c.cancelledBy === "member" ? "會員取消" : "已取消"}</span>
+                            {c.cancellationReason && <span>原因：{c.cancellationReason}</span>}
                           </li>
                         ))}
                       </ul>

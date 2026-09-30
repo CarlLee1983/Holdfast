@@ -6,6 +6,7 @@ const DEFAULT_HOLD_TTL_SECONDS = 600;
 // 上限：擋掉明顯的手誤與亂填（例如 12 位數的時間、超長名稱），不是業務規則
 const MAX_NAME_LENGTH = 200;
 const MAX_DESCRIPTION_LENGTH = 200;
+const MAX_CANCELLATION_REASON_LENGTH = 200;
 const MAX_HOLD_TTL_SECONDS = 86_400;
 const MAX_CANCELLATION_CUTOFF_SECONDS = 30 * 86_400;
 const MAX_CAPACITY = 100_000;
@@ -37,6 +38,13 @@ const description = z
   .string({ error: "說明必須是文字" })
   .trim()
   .max(MAX_DESCRIPTION_LENGTH, `說明不可超過 ${MAX_DESCRIPTION_LENGTH} 個字`)
+  .transform((value) => value || null);
+
+/** 取消原因（給會員看的純文字）：去掉前後空白，空白存 null。 */
+const cancellationReason = z
+  .string({ error: "取消原因必須是文字" })
+  .trim()
+  .max(MAX_CANCELLATION_REASON_LENGTH, `取消原因不可超過 ${MAX_CANCELLATION_REASON_LENGTH} 個字`)
   .transform((value) => value || null);
 
 const holdTtlSeconds = wholeNumber("保留期限")
@@ -116,6 +124,7 @@ export const listSlotHoldsAndBookingsInput = z.object({ slotId });
 export const cancelBookingInput = z.object({
   slotId,
   bookingId: wholeNumber("訂位").positive("訂位編號無效"),
+  reason: cancellationReason.default(null),
 });
 
 export type CreateResourceInput = z.output<typeof createResourceInput>;

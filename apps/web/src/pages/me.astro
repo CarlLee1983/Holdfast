@@ -112,6 +112,9 @@ const TAG_VARIANT = { confirmed: "tag--solid", cancelled: "tag--quiet" } as cons
                     </span>
                   </p>
                   <p class="meta">{booking.seats} 位</p>
+                  {booking.status === "cancelled" && booking.cancellationReason && (
+                    <p class="meta">取消原因：{booking.cancellationReason}</p>
+                  )}
                   <p class="meta">取消截止時間 {formatTaipeiDateTime(booking.cancellableUntil)}</p>
                   {cancellation === "cancellable" && (
                     <form method="post">

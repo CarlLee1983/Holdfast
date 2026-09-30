@@ -13,7 +13,7 @@ describe("holdOrBookingStatus", () => {
 
   it("distinguishes admin and member cancellation", () => {
     const cancelled: HoldOrBookingState = { status: "cancelled", cancelledBy: "admin" };
-    expect(holdOrBookingStatus(cancelled)).toBe("管理者已取消");
+    expect(holdOrBookingStatus(cancelled)).toBe("店家已取消");
     expect(holdOrBookingStatus({ ...cancelled, cancelledBy: "member" })).toBe("已取消");
   });
 });

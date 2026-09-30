@@ -53,6 +53,7 @@ export interface AdminHoldOrBooking {
   createdAt: number;
   cancelledAt: number | null;
   cancelledBy: "admin" | "member" | null;
+  cancellationReason: string | null;
 }
 
 export interface SlotHoldsAndBookings {
@@ -67,6 +68,9 @@ type AdminResult<T, Reason extends string = never> =
   | InvalidInput;
 
 const AUDIT_COLUMNS = "actor_email, action, target_type, target_id, at, detail";
+
+/** 「時段尚未開始」的條件片段（開始時間晚於高水位有效時間），接在 `holds` 的 UPDATE 條件裡；只能用在 `batchAtEffectiveNow` 裡（ADR 0011）。 */
+const slotNotStarted = sql`EXISTS (SELECT 1 FROM slots WHERE slots.id = holds.slot_id AND slots.starts_at > ${effectiveNow})`;
 
 export function createAdminService(d1: D1Database, clock: Clock, accessConfig: AccessConfig) {
   const db = drizzle(d1);
@@ -207,7 +211,8 @@ export function createAdminService(d1: D1Database, clock: Clock, accessConfig: A
         const { results } = await d1.prepare(
           `SELECT h.id, h.member_id AS memberId, u.name AS memberName, u.email AS memberEmail,
                   h.seats, h.status, h.expires_at AS expiresAt, h.created_at AS createdAt,
-                  h.cancelled_at AS cancelledAt, h.cancelled_by AS cancelledBy
+                  h.cancelled_at AS cancelledAt, h.cancelled_by AS cancelledBy,
+                  h.cancellation_reason AS cancellationReason
            FROM holds h LEFT JOIN "user" u ON u.id = h.member_id
            WHERE h.slot_id = ? ORDER BY h.created_at, h.id`,
         ).bind(slotId).all<AdminHoldOrBooking>();
@@ -219,31 +224,39 @@ export function createAdminService(d1: D1Database, clock: Clock, accessConfig: A
       });
     },
 
-    cancelBookingForAdmin(jwt: unknown, input: unknown): Promise<AdminResult<AdminBooking, "booking_not_found">> {
-      return authorized(jwt, cancelBookingInput, input, async (actor, { slotId, bookingId }) => {
-        const at = clock.now();
-        // D1 batch is atomic. changes() makes the audit conditional on the preceding UPDATE.
-        const [updated] = await d1.batch<AdminBooking>([
-          d1.prepare(
-            `UPDATE holds SET status = ?, cancelled_at = ?, cancelled_by = 'admin'
-             WHERE id = ? AND slot_id = ? AND status = ? RETURNING id, slot_id AS slotId, seats`,
-          ).bind(CANCELLED, at, bookingId, slotId, CONFIRMED),
-          d1.prepare(
-            `INSERT INTO admin_audit (${AUDIT_COLUMNS})
-             SELECT ?, 'booking.cancel', 'booking', ?, ?, '{}'
-             WHERE changes() > 0`,
-          ).bind(actor.email, bookingId, at),
+    cancelBookingForAdmin(jwt: unknown, input: unknown): Promise<AdminResult<AdminBooking, "booking_not_found" | "slot_started">> {
+      return authorized(jwt, cancelBookingInput, input, async (actor, { slotId, bookingId, reason }) => {
+        // 「時段尚未開始」的判定在取消那一句 UPDATE 的條件內（ADR 0004），時間用高水位有效時間（ADR 0011），不先讀再寫。
+        // 稽核 INSERT 靠 changes() 接在 UPDATE 之後，只在真的取消時才寫入。
+        const now = clock.now();
+        const [updated] = await batchAtEffectiveNow<AdminBooking>(d1, now, [
+          sql`
+            UPDATE holds
+            SET status = ${CANCELLED}, cancelled_at = ${effectiveNow}, cancelled_by = 'admin', cancellation_reason = ${reason}
+            WHERE id = ${bookingId} AND slot_id = ${slotId} AND status = ${CONFIRMED} AND ${slotNotStarted}
+            RETURNING id, slot_id AS slotId, seats
+          `,
+          sql`
+            INSERT INTO admin_audit (${sql.raw(AUDIT_COLUMNS)})
+            SELECT ${actor.email}, 'booking.cancel', 'booking', ${bookingId}, ${effectiveNow}, json_object('reason', ${reason})
+            WHERE changes() > 0
+          `,
         ]);
         const booking = updated!.results[0];
         if (booking) {
-          logAudit(actor, "booking.cancel", "booking", bookingId, {});
+          logAudit(actor, "booking.cancel", "booking", bookingId, { reason });
           return ok(booking);
         }
-        // A repeated or concurrent cancellation is harmless and does not add an audit row.
+        // 以下都是原子決定之後的盡力查詢，只用來選 reason，兩次之間狀態可能已變。
+        // 重複或並行的取消無害，也不會多寫稽核列。
         const prior = await d1.prepare(
           "SELECT id, slot_id AS slotId, seats FROM holds WHERE id = ? AND slot_id = ? AND status = ? AND cancelled_by = 'admin'",
         ).bind(bookingId, slotId, CANCELLED).first<AdminBooking>();
-        return prior ? ok(prior) : fail("booking_not_found");
+        if (prior) return ok(prior);
+        const stillConfirmed = await d1.prepare(
+          "SELECT 1 AS found FROM holds WHERE id = ? AND slot_id = ? AND status = ?",
+        ).bind(bookingId, slotId, CONFIRMED).first();
+        return stillConfirmed ? fail("slot_started") : fail("booking_not_found");
       });
     },
 

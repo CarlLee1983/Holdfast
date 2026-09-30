@@ -2,9 +2,11 @@
 import { env } from "cloudflare:workers";
 import { readAccessJwt } from "../../../admin/access-jwt";
 import { handleCancelBookingPost } from "../../../admin/cancel-booking";
+import { slotCancellable } from "../../../admin/slot-cancellable";
 import { memberIdentity } from "../../../admin/slot-holds-and-bookings";
 import { holdOrBookingStatus } from "../../../shared/booking-status";
 import { formatTaipeiDate, formatTaipeiTime } from "../../../catalog/taipei-time";
+import CancelBookingForm from "../../../components/CancelBookingForm.astro";
 import AccessDenied from "../../../components/AccessDenied.astro";
 import AdminLayout from "../../../layouts/AdminLayout.astro";
 
@@ -18,7 +20,13 @@ let cancelError = "";
 let unauthorized = false;
 
 if (validSlotId && Astro.request.method === "POST") {
-  const outcome = await handleCancelBookingPost({ jwt, request: Astro.request, app: env.APP, slotId });
+  const outcome = await handleCancelBookingPost({
+    jwt,
+    request: Astro.request,
+    app: env.APP,
+    slotId,
+    successUrl: (id) => `/admin/slots/${slotId}?cancelled=${id}`,
+  });
   if ("redirect" in outcome) return Astro.redirect(outcome.redirect, outcome.status);
   cancelError = outcome.error;
   unauthorized = outcome.status === 403;
@@ -37,6 +45,7 @@ const slot = result?.ok ? result.data.slot : null;
 const holdsAndBookings = result?.ok ? result.data.holdsAndBookings : [];
 const cancelledId = Astro.url.searchParams.get("cancelled");
 const cancelled = cancelledId !== null && holdsAndBookings.some((r) => String(r.id) === cancelledId && r.status === "cancelled");
+const now = Date.now();
 const formatDateTime = (time: number) => `${formatTaipeiDate(time)} ${formatTaipeiTime(time)}`;
 ---
 
@@ -67,15 +76,15 @@ const formatDateTime = (time: number) => `${formatTaipeiDate(time)} ${formatTaip
                     <td>{memberIdentity(holdOrBooking)}</td>
                     <td>{holdOrBooking.memberEmail ?? "—"}</td>
                     <td>{holdOrBooking.seats}</td>
-                    <td>{holdOrBookingStatus(holdOrBooking)}</td>
+                    <td>
+                      {holdOrBookingStatus(holdOrBooking)}
+                      {holdOrBooking.cancellationReason && <p class="meta">取消原因：{holdOrBooking.cancellationReason}</p>}
+                    </td>
                     <td>{formatDateTime(holdOrBooking.createdAt)}</td>
                     <td>{formatDateTime(holdOrBooking.expiresAt)}</td>
                     <td>
-                      {holdOrBooking.status === "confirmed" && (
-                        <form method="post">
-                          <input type="hidden" name="bookingId" value={holdOrBooking.id} />
-                          <button type="submit">取消訂位</button>
-                        </form>
+                      {holdOrBooking.status === "confirmed" && slotCancellable(slot.startsAt, now) && (
+                        <CancelBookingForm bookingId={holdOrBooking.id} />
                       )}
                     </td>
                   </tr>

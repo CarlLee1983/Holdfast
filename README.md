@@ -59,7 +59,7 @@ bun run e2e            # Playwright 主流程（首次先在 e2e/ 執行 bunx pl
 
 ## 管理後台
 
-`/admin` 是日程表（單日、依台北時間切日，列出所有資源的時段與訂位、保留中、已取消名單，可依資源篩選，前後一天與日期選擇器都是一般 GET）；`/admin/resources`（資源列表、建立與修改資源、建立時段、查看時段內的保留與訂位、取消訂位；時間以台北時間輸入與顯示；管理表單同樣有防重複送出）與唯讀的 `/admin/audit`（依 ID 新到舊，每頁 50 筆，cursor 翻頁）前面放 Cloudflare Access，理由與取捨見 [ADR 0007](docs/adr/0007-admin-behind-cloudflare-access.md)。會員可在 `/me` 看到被管理者取消的訂位。
+`/admin` 是日程表（單日、依台北時間切日，列出所有資源的時段與訂位、保留中、已取消名單，可依資源篩選，前後一天與日期選擇器都是一般 GET）；`/admin/resources`（資源列表、建立與修改資源、建立時段、查看時段內的保留與訂位、取消訂位（可填給會員看的原因，時段開始後不能取消；日程表也能直接取消）；時間以台北時間輸入與顯示；管理表單同樣有防重複送出）與唯讀的 `/admin/audit`（依 ID 新到舊，每頁 50 筆，cursor 翻頁）前面放 Cloudflare Access，理由與取捨見 [ADR 0007](docs/adr/0007-admin-behind-cloudflare-access.md)。會員可在 `/me` 看到被管理者取消的訂位與取消原因。
 Web Worker 只把請求裡的 `Cf-Access-Jwt-Assertion` 原樣轉交給 App Worker，授權完全由 App 的管理 RPC 自己驗簽決定（RS256、`aud`、`iss`、未過期，容許 30 秒時鐘誤差）。
 每個成功的管理寫入都在同一個 D1 batch 內寫一列 `admin_audit`（操作者 email），並輸出一行結構化 log。
 
