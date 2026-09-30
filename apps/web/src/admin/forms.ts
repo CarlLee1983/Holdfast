@@ -10,6 +10,7 @@ export function resourceFormToInput(form: FormLike, id?: number) {
     name: toText(form.get("name")),
     seatsPerHold: toNumber(form.get("seatsPerHold")),
     cancellationCutoffSeconds: toNumber(form.get("cancellationCutoffSeconds")),
+    description: toText(form.get("description")),
   };
   const ttlRaw = form.get("holdTtlSeconds");
   const ttl = id === undefined && isBlank(ttlRaw) ? {} : { holdTtlSeconds: toNumber(ttlRaw) };

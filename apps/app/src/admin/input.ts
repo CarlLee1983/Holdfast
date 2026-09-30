@@ -5,6 +5,7 @@ const DEFAULT_HOLD_TTL_SECONDS = 600;
 
 // 上限：擋掉明顯的手誤與亂填（例如 12 位數的時間、超長名稱），不是業務規則
 const MAX_NAME_LENGTH = 200;
+const MAX_DESCRIPTION_LENGTH = 200;
 const MAX_HOLD_TTL_SECONDS = 86_400;
 const MAX_CANCELLATION_CUTOFF_SECONDS = 30 * 86_400;
 const MAX_CAPACITY = 100_000;
@@ -31,6 +32,13 @@ const name = z
   .min(1, "名稱不可為空")
   .max(MAX_NAME_LENGTH, `名稱不可超過 ${MAX_NAME_LENGTH} 個字`);
 
+/** 純文字說明：去掉前後空白，空白存 null。 */
+const description = z
+  .string({ error: "說明必須是文字" })
+  .trim()
+  .max(MAX_DESCRIPTION_LENGTH, `說明不可超過 ${MAX_DESCRIPTION_LENGTH} 個字`)
+  .transform((value) => value || null);
+
 const holdTtlSeconds = wholeNumber("保留期限")
   .positive("保留期限必須大於 0")
   .max(MAX_HOLD_TTL_SECONDS, "保留期限不可超過 86400 秒（24 小時）");
@@ -47,15 +55,17 @@ export const createResourceInput = z.object({
   holdTtlSeconds: holdTtlSeconds.default(DEFAULT_HOLD_TTL_SECONDS),
   seatsPerHold,
   cancellationCutoffSeconds,
+  description: description.default(null),
 });
 
-/** 修改資源：表單一次送出全部欄位，所以保留期限在這裡是必填，避免省略時悄悄被重設成預設值。 */
+/** 修改資源：表單一次送出全部欄位，所以保留期限與說明在這裡是必填，避免省略時悄悄被重設成預設值。 */
 export const updateResourceInput = z.object({
   id: resourceId,
   name,
   holdTtlSeconds,
   seatsPerHold,
   cancellationCutoffSeconds,
+  description,
 });
 
 export const createSlotInput = z

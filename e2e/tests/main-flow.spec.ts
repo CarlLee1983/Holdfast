@@ -34,3 +34,12 @@ test("會員主流程：登入 → 看到時段 → 保留 → 確認 → 會員
   await expect(page.getByRole("status")).toHaveText("已取消訂位");
   await expect(page.getByText("目前沒有訂位")).toBeVisible();
 });
+
+test("首頁訂位須知：列出各資源的說明與取消規則（seed）", async ({ page }) => {
+  await page.goto("/");
+  const notes = page.getByRole("region", { name: "訂位須知" });
+  await expect(notes.getByText("面向開放廚房的長桌與雙人座")).toBeVisible();
+  await expect(notes.getByText("可於用餐前 2 小時前自行取消")).toBeVisible();
+  await expect(notes.getByText("獨立空間，適合 6–10 位")).toBeVisible();
+  await expect(notes.getByText("可於用餐前 24 小時前自行取消")).toBeVisible();
+});

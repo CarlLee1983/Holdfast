@@ -12,6 +12,8 @@ export const resources = sqliteTable("resources", {
   seatsPerHold: integer("seats_per_hold").notNull(),
   /** 取消截止時間（Cancellation Cutoff）：時段開始前幾秒起會員不可自行取消。 */
   cancellationCutoffSeconds: integer("cancellation_cutoff_seconds").notNull(),
+  /** 給顧客看的純文字說明，選填，最多 200 字（在 App 端驗證）。 */
+  description: text("description"),
   createdAt: integer("created_at")
     .notNull()
     .default(sql`(unixepoch() * 1000)`),

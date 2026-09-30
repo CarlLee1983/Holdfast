@@ -111,7 +111,8 @@ export function createAdminService(d1: D1Database, clock: Clock, accessConfig: A
                'name', name,
                'holdTtlSeconds', hold_ttl_seconds,
                'seatsPerHold', seats_per_hold,
-               'cancellationCutoffSeconds', cancellation_cutoff_seconds
+               'cancellationCutoffSeconds', cancellation_cutoff_seconds,
+               'description', description
              ),
              'after', json(?3)
            )
@@ -228,9 +229,9 @@ export function createAdminService(d1: D1Database, clock: Clock, accessConfig: A
         const [insert] = await d1.batch<{ id: number }>([
           d1
             .prepare(
-              "INSERT INTO resources (name, hold_ttl_seconds, seats_per_hold, cancellation_cutoff_seconds) VALUES (?, ?, ?, ?) RETURNING id",
+              "INSERT INTO resources (name, hold_ttl_seconds, seats_per_hold, cancellation_cutoff_seconds, description) VALUES (?, ?, ?, ?, ?) RETURNING id",
             )
-            .bind(data.name, data.holdTtlSeconds, data.seatsPerHold, data.cancellationCutoffSeconds),
+            .bind(data.name, data.holdTtlSeconds, data.seatsPerHold, data.cancellationCutoffSeconds, data.description),
           auditAfterInsert(actor, "resource.create", "resource", data),
         ]);
         const id = insert!.results[0]!.id;
@@ -250,9 +251,9 @@ export function createAdminService(d1: D1Database, clock: Clock, accessConfig: A
           auditResourceUpdateBeforeWrite(actor, id, fields),
           d1
             .prepare(
-              "UPDATE resources SET name = ?, hold_ttl_seconds = ?, seats_per_hold = ?, cancellation_cutoff_seconds = ? WHERE id = ?",
+              "UPDATE resources SET name = ?, hold_ttl_seconds = ?, seats_per_hold = ?, cancellation_cutoff_seconds = ?, description = ? WHERE id = ?",
             )
-            .bind(fields.name, fields.holdTtlSeconds, fields.seatsPerHold, fields.cancellationCutoffSeconds, id),
+            .bind(fields.name, fields.holdTtlSeconds, fields.seatsPerHold, fields.cancellationCutoffSeconds, fields.description, id),
         ]);
         if (update!.meta.changes === 0) return fail("resource_not_found");
         logAudit(actor, "resource.update", "resource", id, JSON.parse(audit!.results[0]!.detail));

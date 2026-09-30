@@ -9,6 +9,7 @@ export interface ResourceSummary {
   holdTtlSeconds: number;
   seatsPerHold: number;
   cancellationCutoffSeconds: number;
+  description: string | null;
 }
 
 export interface SlotAvailability {
@@ -29,6 +30,7 @@ export async function selectResources(
       holdTtlSeconds: resources.holdTtlSeconds,
       seatsPerHold: resources.seatsPerHold,
       cancellationCutoffSeconds: resources.cancellationCutoffSeconds,
+      description: resources.description,
     })
     .from(resources)
     .orderBy(asc(resources.id));

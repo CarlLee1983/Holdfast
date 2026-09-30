@@ -138,6 +138,7 @@ describe("cancelBooking", () => {
       id: resourceId,
       name: "大廳",
       holdTtlSeconds: 600,
+      description: "",
       seatsPerHold: 4,
       cancellationCutoffSeconds: 4 * 3600,
     });

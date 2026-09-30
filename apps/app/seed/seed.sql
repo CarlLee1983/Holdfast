@@ -3,9 +3,9 @@
 DELETE FROM slots;
 DELETE FROM resources;
 
-INSERT INTO resources (id, name, hold_ttl_seconds, seats_per_hold, cancellation_cutoff_seconds) VALUES
-  (1, '大廳用餐', 600, 4, 7200),
-  (2, '包廂', 600, 10, 86400);
+INSERT INTO resources (id, name, hold_ttl_seconds, seats_per_hold, cancellation_cutoff_seconds, description) VALUES
+  (1, '大廳用餐', 600, 4, 7200, '面向開放廚房的長桌與雙人座'),
+  (2, '包廂', 600, 10, 86400, '獨立空間，適合 6–10 位');
 
 -- 台北 = UTC+8：+11 小時 = 台北 19:00、+13 小時 = 21:00、+3 小時 = 11:00
 INSERT INTO slots (resource_id, starts_at, ends_at, capacity) VALUES

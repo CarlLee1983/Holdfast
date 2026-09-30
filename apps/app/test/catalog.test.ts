@@ -34,9 +34,18 @@ describe("listResources", () => {
           holdTtlSeconds: 300,
           seatsPerHold: 6,
           cancellationCutoffSeconds: 7200,
+          description: null,
         },
       ],
     });
+  });
+
+  it("回傳資源的說明", async () => {
+    await insertResource({ name: "包廂", description: "獨立空間，適合 6–10 位" });
+
+    const result = await app.listResources();
+
+    expect(result.ok && result.data[0]?.description).toBe("獨立空間，適合 6–10 位");
   });
 
   it("保留期限預設為 10 分鐘", async () => {

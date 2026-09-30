@@ -4,7 +4,7 @@ import type { Failure } from "../admin/reasons";
 interface Props {
   /** 修改時帶資源編號；建立時省略。 */
   resourceId?: number;
-  values: { name?: string; holdTtlSeconds?: string | number; seatsPerHold?: string | number; cancellationCutoffSeconds?: string | number };
+  values: { name?: string; holdTtlSeconds?: string | number; seatsPerHold?: string | number; cancellationCutoffSeconds?: string | number; description?: string | null };
   failure?: Failure | undefined;
   submitLabel: string;
 }
@@ -34,6 +34,11 @@ const errors = failure?.fields ?? {};
     取消截止時間（開始前幾秒）
     <input name="cancellationCutoffSeconds" inputmode="numeric" value={values.cancellationCutoffSeconds ?? ""} required />
     {errors.cancellationCutoffSeconds?.map((m) => <span class="error">{m}</span>)}
+  </label>
+  <label>
+    說明（選填，最多 200 字）
+    <textarea name="description" rows="3">{values.description ?? ""}</textarea>
+    {errors.description?.map((m) => <span class="error">{m}</span>)}
   </label>
   <p><button type="submit">{submitLabel}</button></p>
 </form>
