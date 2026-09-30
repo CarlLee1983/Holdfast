@@ -147,12 +147,14 @@ const largest = photo.sources[photo.sources.length - 1];
     align-items: flex-start;
     gap: var(--space-sm);
   }
+  /* 會員名稱較長、右側折成兩行時，方塊跟著撐滿頁首高度，底下才不會留一段空白（#50） */
   .mark {
     flex-shrink: 0;
+    align-self: stretch;
     display: grid;
     place-items: center;
     width: var(--mark-size);
-    height: var(--mark-size);
+    min-height: var(--mark-size);
     background: var(--color-brand);
     color: var(--color-on-brand);
     text-decoration: none;
@@ -268,6 +270,10 @@ const largest = photo.sources[photo.sources.length - 1];
   .shell--cover .account,
   .shell--cover #sign-out-error {
     pointer-events: auto;
+  }
+  /* 疊在照片上的頁首沒有底線，方塊維持正方形，不隨會員入口拉長 */
+  .shell--cover .mark {
+    align-self: flex-start;
   }
   /* 疊在照片上的會員入口：半透明紙色底 */
   .shell--cover .account {
