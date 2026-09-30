@@ -260,6 +260,22 @@ td a {
 .agenda-cancelled span:first-child {
   text-decoration: line-through;
 }
+.member-results,
+.member-reservations {
+  list-style: none;
+  padding: 0;
+  font-size: var(--text-sm);
+}
+.member-results li,
+.member-reservations li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2xs) var(--space-sm);
+  min-width: 0;
+  padding: var(--space-xs) 0;
+  border-bottom: 1px solid var(--color-rule);
+}
 .cancel-booking {
   display: flex;
   flex-wrap: wrap;

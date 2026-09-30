@@ -95,9 +95,12 @@ export async function setSlotCapacity(slotId: number, capacity: number): Promise
 
 /** 建一個最小的 Better Auth 會員列（不經登入流程），給以假會員編號測試 RPC 的案例用；確認保留要求會員仍存在。 */
 export async function insertUser(id: string): Promise<void> {
-  await env.DB.prepare('INSERT INTO "user" (id, name, email) VALUES (?, ?, ?)')
-    .bind(id, id, `${id}@example.com`)
-    .run();
+  await insertNamedUser(id, id, `${id}@example.com`);
+}
+
+/** 指定名稱與 email 的會員列，查會員的比對測試用。 */
+export async function insertNamedUser(id: string, name: string, email: string): Promise<void> {
+  await env.DB.prepare('INSERT INTO "user" (id, name, email) VALUES (?, ?, ?)').bind(id, name, email).run();
 }
 
 /** 直接寫入一筆保留或訂位（狀態、到期時間由測試決定），用來造出各種占用情況。 */
