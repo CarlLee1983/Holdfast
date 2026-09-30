@@ -16,6 +16,9 @@ const MESSAGES: Record<string, string> = {
   member_not_found: "找不到這位會員",
   booking_not_found: "找不到這筆訂位",
   slot_started: "時段已開始，無法取消",
+  slot_batch_empty: "區間內沒有符合條件的時段，請調整日期、星期或開始時間",
+  slot_batch_too_large: "一次最多產生 200 個時段，請縮短區間或減少開始時間",
+  slot_batch_overlaps_itself: "這批時段彼此重疊（時段長度大於開始時間的間隔），請調整",
 };
 
 /** 把管理 RPC 的失敗結果轉成表單上顯示的訊息；`unauthorized` 由頁面另外處理（403）。 */

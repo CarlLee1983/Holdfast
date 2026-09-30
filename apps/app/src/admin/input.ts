@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { MAX_SEATS_PER_HOLD, wholeNumber } from "../shared/input";
+import { DAY_MS, parseCalendarDate } from "./slot-batch";
 
 const DEFAULT_HOLD_TTL_SECONDS = 600;
 
@@ -90,6 +91,57 @@ export const createSlotInput = z
   })
   .refine(endsAfterStart.check, endsAfterStart.params);
 
+const MAX_BATCH_DAYS = 90;
+const MAX_BATCH_START_TIMES = 48;
+const MAX_BATCH_DURATION_MINUTES = 1440;
+const isoDate = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+// 批次的台北日期界線要保證展開結果落在單筆時段的 UTC 界線（MIN/MAX_SLOT_TIME）內，所以各差一天以上：
+// 台北 00:00 = 前一天 UTC 16:00，fromDate 若是 MIN_SLOT_TIME 當天，最早的時段會落在界線之前；
+// 最晚開始 23:59 加上最長 1440 分鐘會跨到隔天，toDate 再往前一天，結束時間才不會超過 MAX_SLOT_TIME。
+const MIN_BATCH_DATE = isoDate(MIN_SLOT_TIME + DAY_MS);
+const MAX_BATCH_DATE = isoDate(MAX_SLOT_TIME - 2 * DAY_MS);
+const CLOCK_TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** 台北日曆日 "YYYY-MM-DD"：格式、日期本身、範圍（字串比較即日期比較）。 */
+const calendarDate = (label: string) =>
+  z
+    .string({ error: `${label}必須是文字` })
+    .refine((value) => parseCalendarDate(value) !== null, `${label}必須是 YYYY-MM-DD 格式的有效日期`)
+    .refine((value) => value >= MIN_BATCH_DATE, `${label}不可早於 ${MIN_BATCH_DATE}`)
+    .refine((value) => value <= MAX_BATCH_DATE, `${label}不可晚於 ${MAX_BATCH_DATE}`);
+
+const hasNoDuplicates = <T>(values: T[]) => new Set(values).size === values.length;
+
+/** 批次建立時段（預覽與寫入共用）：日期是台北日曆日、含頭尾；開始時間是台北時間。 */
+export const createSlotBatchInput = z
+  .object({
+    resourceId,
+    fromDate: calendarDate("開始日期"),
+    toDate: calendarDate("結束日期"),
+    weekdays: z
+      .array(wholeNumber("星期").min(0, "星期必須介於 0（週日）到 6（週六）").max(6, "星期必須介於 0（週日）到 6（週六）"), {
+        error: "星期必須是清單",
+      })
+      .min(1, "至少選擇一個星期")
+      .refine(hasNoDuplicates, "星期不可重複"),
+    startTimes: z
+      .array(z.string({ error: "開始時間必須是文字" }).regex(CLOCK_TIME, "開始時間必須是 HH:mm 格式（00:00 至 23:59）"), {
+        error: "開始時間必須是清單",
+      })
+      .min(1, "至少設定一個開始時間")
+      .max(MAX_BATCH_START_TIMES, `開始時間不可超過 ${MAX_BATCH_START_TIMES} 個`)
+      .refine(hasNoDuplicates, "開始時間不可重複"),
+    durationMinutes: wholeNumber("時段長度")
+      .min(1, "時段長度至少為 1 分鐘")
+      .max(MAX_BATCH_DURATION_MINUTES, `時段長度不可超過 ${MAX_BATCH_DURATION_MINUTES} 分鐘`),
+    capacity,
+  })
+  .refine((batch) => batch.toDate >= batch.fromDate, { path: ["toDate"], error: "結束日期不可早於開始日期" })
+  .refine(
+    (batch) => (parseCalendarDate(batch.toDate)! - parseCalendarDate(batch.fromDate)!) / DAY_MS + 1 <= MAX_BATCH_DAYS,
+    { path: ["toDate"], error: `日期區間不可超過 ${MAX_BATCH_DAYS} 天` },
+  );
+
 /** 調整容量：可調到低於已占用（形成超占，CONTEXT.md），所以只驗容量本身的範圍。 */
 export const updateSlotCapacityInput = z.object({ slotId, capacity });
 
@@ -149,6 +201,7 @@ export const cancelBookingInput = z.object({
 export type CreateResourceInput = z.output<typeof createResourceInput>;
 export type UpdateResourceInput = z.output<typeof updateResourceInput>;
 export type CreateSlotInput = z.output<typeof createSlotInput>;
+export type CreateSlotBatchInput = z.output<typeof createSlotBatchInput>;
 export type UpdateSlotCapacityInput = z.output<typeof updateSlotCapacityInput>;
 export type UpdateSlotTimeInput = z.output<typeof updateSlotTimeInput>;
 export type DeleteSlotInput = z.output<typeof deleteSlotInput>;

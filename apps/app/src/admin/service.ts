@@ -14,6 +14,7 @@ import { CANCELLED, CONFIRMED, HELD, holds, RELEASED } from "../holds/schema";
 import {
   cancelBookingInput,
   createResourceInput,
+  createSlotBatchInput,
   createSlotInput,
   deleteSlotInput,
   getResourceInput,
@@ -26,6 +27,7 @@ import {
   updateSlotCapacityInput,
   updateSlotTimeInput,
 } from "./input";
+import { expandSlotBatch, type SlotBatchRejection, type SlotTimes } from "./slot-batch";
 import {
   selectFutureBookingCount,
   selectAdminAudit,
@@ -78,6 +80,12 @@ const AUDIT_COLUMNS = "actor_email, action, target_type, target_id, at, detail";
 
 /** 「時段尚未開始」的條件片段（開始時間晚於高水位有效時間），接在 `holds` 的 UPDATE 條件裡；只能用在 `batchAtEffectiveNow` 裡（ADR 0011）。 */
 const slotNotStarted = sql`EXISTS (SELECT 1 FROM slots WHERE slots.id = holds.slot_id AND slots.starts_at > ${effectiveNow})`;
+
+type SlotBatchReason = "resource_not_found" | "resource_retired" | SlotBatchRejection;
+
+/** json_each 候選列（別名 je）的欄位；與 noOverlappingSlot 搭配，讓預覽與寫入共用同一個重疊定義（ADR 0015）。 */
+const candidateStartsAt = sql`json_extract(je.value, '$.startsAt')`;
+const candidateEndsAt = sql`json_extract(je.value, '$.endsAt')`;
 
 export function createAdminService(d1: D1Database, clock: Clock, accessConfig: AccessConfig) {
   const db = drizzle(d1);
@@ -159,7 +167,7 @@ export function createAdminService(d1: D1Database, clock: Clock, accessConfig: A
    * [start, end) 相交 ⇔ 既有.start < 新.end 且 既有.end > 新.start，相鄰不算相交。
    * 修改時傳 `excludeSlotId` 排除自己；`resourceId` 可以是數字或回傳資源編號的子查詢。
    */
-  const noOverlappingSlot = (resourceId: number | SQL, startsAt: number, endsAt: number, excludeSlotId?: number) =>
+  const noOverlappingSlot = (resourceId: number | SQL, startsAt: number | SQL, endsAt: number | SQL, excludeSlotId?: number) =>
     sql`NOT EXISTS (
       SELECT 1 FROM ${slots}
       WHERE ${slots.resourceId} = ${resourceId} AND ${slots.startsAt} < ${endsAt} AND ${slots.endsAt} > ${startsAt}
@@ -377,6 +385,81 @@ export function createAdminService(d1: D1Database, clock: Clock, accessConfig: A
         const id = insert!.meta.last_row_id;
         logAudit(actor, "slot.create", "slot", id, slot);
         return ok({ id, ...slot });
+      });
+    },
+
+    previewSlotBatch(
+      jwt: unknown,
+      input: unknown,
+    ): Promise<AdminResult<{ slots: SlotTimes[]; skipped: SlotTimes[] }, SlotBatchReason>> {
+      return authorized(jwt, createSlotBatchInput, input, async (_actor, batch) => {
+        const expanded = expandSlotBatch(batch);
+        if (!expanded.ok) return fail(expanded.reason);
+        const resource = await selectResource(db, batch.resourceId);
+        if (!resource) return fail("resource_not_found");
+        if (resource.retiredAt !== null) return fail("resource_retired");
+        // 純讀：一句 SELECT 找出與既有時段相交的候選（與寫入共用 noOverlappingSlot），不逐筆查詢
+        const { results } = await toD1Statement(
+          d1,
+          sql`SELECT ${candidateStartsAt} AS startsAt, ${candidateEndsAt} AS endsAt
+              FROM json_each(${JSON.stringify(expanded.slots)}) AS je
+              WHERE NOT ${noOverlappingSlot(batch.resourceId, candidateStartsAt, candidateEndsAt)}
+              ORDER BY startsAt`,
+        ).all<SlotTimes>();
+        const skippedStarts = new Set(results.map((row) => row.startsAt));
+        return ok({ slots: expanded.slots.filter((s) => !skippedStarts.has(s.startsAt)), skipped: results });
+      });
+    },
+
+    createSlotBatch(
+      jwt: unknown,
+      input: unknown,
+    ): Promise<AdminResult<{ slots: SlotRecord[]; skipped: SlotTimes[] }, SlotBatchReason>> {
+      return authorized(jwt, createSlotBatchInput, input, async (actor, batch) => {
+        // 伺服器端重新展開與檢查，不接受前端的清單。寫入是一句 INSERT … SELECT … FROM json_each(?)（ADR 0015）：
+        // 資源未停用與逐筆不重疊都在這一句的 WHERE 內；RETURNING 沒回來的候選就是被跳過的
+        const expanded = expandSlotBatch(batch);
+        if (!expanded.ok) return fail(expanded.reason);
+        const [insert, audit] = await d1.batch<{ id: number; startsAt: number; endsAt: number } & { detail: string }>([
+          toD1Statement(
+            d1,
+            sql`INSERT INTO slots (resource_id, starts_at, ends_at, capacity)
+                SELECT ${batch.resourceId}, ${candidateStartsAt}, ${candidateEndsAt}, ${batch.capacity}
+                FROM json_each(${JSON.stringify(expanded.slots)}) AS je
+                WHERE EXISTS (SELECT 1 FROM resources WHERE id = ${batch.resourceId} AND retired_at IS NULL)
+                  AND ${noOverlappingSlot(batch.resourceId, candidateStartsAt, candidateEndsAt)}
+                RETURNING id, starts_at AS startsAt, ends_at AS endsAt`,
+          ),
+          // 只在前一句有寫入時才寫；slotIds 用 last_insert_rowid() 往回數 changes() 列（依賴單句配出連續 ID，ADR 0015）
+          toD1Statement(
+            d1,
+            sql`INSERT INTO admin_audit (${sql.raw(AUDIT_COLUMNS)})
+                SELECT ${actor.email}, 'slot.create_batch', 'resource', ${batch.resourceId}, ${clock.now()},
+                  json_object(
+                    'input', json(${JSON.stringify(batch)}),
+                    'slotIds', (SELECT json_group_array(id) FROM (
+                      SELECT id FROM slots WHERE id > last_insert_rowid() - changes() AND id <= last_insert_rowid() ORDER BY id
+                    ))
+                  )
+                WHERE changes() > 0
+                RETURNING detail`,
+          ),
+        ]);
+        const written = insert!.results;
+        if (written.length === 0) {
+          // 沒寫入任何一筆之後才分辨原因（只用來選 reason，不影響是否寫入）
+          const resource = await selectResource(db, batch.resourceId);
+          if (!resource) return fail("resource_not_found");
+          if (resource.retiredAt !== null) return fail("resource_retired");
+          return ok({ slots: [], skipped: expanded.slots });
+        }
+        logAudit(actor, "slot.create_batch", "resource", batch.resourceId, JSON.parse(audit!.results[0]!.detail));
+        // RETURNING 的順序不保證
+        const created = written
+          .map(({ id, startsAt, endsAt }) => ({ id, resourceId: batch.resourceId, startsAt, endsAt, capacity: batch.capacity }))
+          .sort((a, b) => a.startsAt - b.startsAt);
+        const createdStarts = new Set(created.map((s) => s.startsAt));
+        return ok({ slots: created, skipped: expanded.slots.filter((s) => !createdStarts.has(s.startsAt)) });
       });
     },
 

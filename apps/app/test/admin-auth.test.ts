@@ -15,6 +15,15 @@ const app = exports.default;
 async function adminCalls(jwt: string) {
   const resourceId = await insertResource({ name: "既有資源" });
   const resource = { name: "新資源", seatsPerHold: 4, cancellationCutoffSeconds: 3600 };
+  const slotBatch = {
+    resourceId,
+    fromDate: "2030-01-01",
+    toDate: "2030-01-07",
+    weekdays: [2, 3],
+    startTimes: ["18:00"],
+    durationMinutes: 60,
+    capacity: 5,
+  };
   return {
     createResource: () => app.createResource(jwt, resource),
     updateResource: () => app.updateResource(jwt, { id: resourceId, holdTtlSeconds: 600, ...resource }),
@@ -23,6 +32,8 @@ async function adminCalls(jwt: string) {
     getResourceForAdmin: () => app.getResourceForAdmin(jwt, resourceId),
     createSlot: () =>
       app.createSlot(jwt, { resourceId, startsAt: NOW + 1000, endsAt: NOW + 2000, capacity: 5 }),
+    previewSlotBatch: () => app.previewSlotBatch(jwt, slotBatch),
+    createSlotBatch: () => app.createSlotBatch(jwt, slotBatch),
     listSlotsForAdmin: () => app.listSlotsForAdmin(jwt, resourceId),
     updateSlotCapacity: () => app.updateSlotCapacity(jwt, { slotId: 1, capacity: 5 }),
     updateSlotTime: () => app.updateSlotTime(jwt, { slotId: 1, startsAt: NOW + 1000, endsAt: NOW + 2000 }),

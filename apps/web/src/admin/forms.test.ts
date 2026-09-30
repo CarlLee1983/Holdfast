@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formToRecord, resourceFormToInput, slotCapacityFormToInput, slotFormToInput, slotIdFormToInput, slotTimeFormToInput } from "./forms";
+import { formToRecord, resourceFormToInput, slotBatchFormToInput, slotCapacityFormToInput, slotFormToInput, slotIdFormToInput, slotTimeFormToInput } from "./forms";
 
 const form = (entries: Record<string, string>) => new URLSearchParams(entries);
 
@@ -105,5 +105,53 @@ describe("表單轉字串記錄（送出失敗時回填欄位用）", () => {
     data.set("upload", new File(["x"], "x.txt"));
 
     expect(formToRecord(data)).toEqual({ name: "大廳" });
+  });
+});
+
+describe("批次建立時段表單轉 RPC 輸入", () => {
+  const batchForm = (startTimes: string, weekdays: string[] = ["1", "0"]) => {
+    const params = new URLSearchParams({
+      fromDate: "2026-10-01",
+      toDate: "2026-10-31",
+      startTimes,
+      durationMinutes: "90",
+      capacity: "8",
+    });
+    for (const day of weekdays) params.append("weekdays", day);
+    return params;
+  };
+
+  it("欄位轉成 RPC 輸入；日期原樣帶字串，星期轉數字", () => {
+    expect(slotBatchFormToInput(batchForm("18:00"), 5)).toEqual({
+      resourceId: 5,
+      fromDate: "2026-10-01",
+      toDate: "2026-10-31",
+      weekdays: [1, 0],
+      startTimes: ["18:00"],
+      durationMinutes: 90,
+      capacity: 8,
+    });
+  });
+
+  it.each([
+    ["18:00, 20:00"],
+    ["18:00、20:00"],
+    ["18:00，20:00"],
+    ["18:00 20:00"],
+    [" 18:00,, 20:00 ,"],
+  ])("開始時間 %j 拆成兩個、去掉空項", (raw) => {
+    expect(slotBatchFormToInput(batchForm(raw), 1).startTimes).toEqual(["18:00", "20:00"]);
+  });
+
+  it("沒勾星期、沒填開始時間就是空陣列，交給 App 驗證", () => {
+    const input = slotBatchFormToInput(batchForm("", []), 1);
+    expect(input.weekdays).toEqual([]);
+    expect(input.startTimes).toEqual([]);
+  });
+
+  it("長度與容量留空或非數字轉成 NaN", () => {
+    const input = slotBatchFormToInput(new URLSearchParams({ durationMinutes: "", capacity: "x" }), 1);
+    expect(input.durationMinutes).toBeNaN();
+    expect(input.capacity).toBeNaN();
   });
 });

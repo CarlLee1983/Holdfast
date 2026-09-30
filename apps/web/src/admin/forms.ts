@@ -49,6 +49,31 @@ export function slotIdFormToInput(form: FormLike) {
   return { slotId: toNumber(form.get("slotId")) };
 }
 
+/** 有多值欄位（同名 checkbox）的表單；URLSearchParams 與 FormData 都符合。 */
+export interface MultiValueFormLike extends FormLike {
+  getAll(name: string): unknown[];
+}
+
+/** 開始時間以半形或全形逗號、頓號或空白分隔，去掉空項；格式與範圍交給 App 驗證。 */
+function splitStartTimes(value: unknown): string[] {
+  return toText(value)
+    .split(/[,，、\s]+/)
+    .filter((part) => part !== "");
+}
+
+/** 批次建立時段表單 → RPC 輸入；日期原樣帶字串，規則（星期、時間、長度、容量）全由 App 驗證。 */
+export function slotBatchFormToInput(form: MultiValueFormLike, resourceId: number) {
+  return {
+    resourceId,
+    fromDate: toText(form.get("fromDate")),
+    toDate: toText(form.get("toDate")),
+    weekdays: form.getAll("weekdays").map(toNumber),
+    startTimes: splitStartTimes(form.get("startTimes")),
+    durationMinutes: toNumber(form.get("durationMinutes")),
+    capacity: toNumber(form.get("capacity")),
+  };
+}
+
 /** 表單 → 字串記錄（略過檔案欄位），送出失敗時用來把使用者輸入的值填回表單。 */
 export function formToRecord(form: FormData): Record<string, string> {
   const record: Record<string, string> = {};

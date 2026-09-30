@@ -61,7 +61,7 @@ bun run e2e            # Playwright 主流程（首次先在 e2e/ 執行 bunx pl
 
 `/admin` 是日程表（單日、依台北時間切日，列出所有資源的時段與訂位、保留中、已取消名單，可依資源篩選，前後一天與日期選擇器都是一般 GET）；`/admin/members`（查會員：名稱或 email 不分大小寫部分比對，最多 20 筆依名稱排序；會員頁列出目前有效的保留與未來的訂位，訂位可在這裡取消，同樣可附原因）；`/admin/resources`（資源列表、建立與修改資源、建立時段、查看時段內的保留與訂位、取消訂位（可填給會員看的原因，時段開始後不能取消；日程表也能直接取消）；時間以台北時間輸入與顯示；管理表單同樣有防重複送出）與唯讀的 `/admin/audit`（依 ID 新到舊，每頁 50 筆，cursor 翻頁）前面放 Cloudflare Access，理由與取捨見 [ADR 0007](docs/adr/0007-admin-behind-cloudflare-access.md)。會員可在 `/me` 看到被管理者取消的訂位與取消原因。
 Web Worker 只把請求裡的 `Cf-Access-Jwt-Assertion` 原樣轉交給 App Worker，授權完全由 App 的管理 RPC 自己驗簽決定（RS256、`aud`、`iss`、未過期，容許 30 秒時鐘誤差）。
-資源詳情可停用與重新啟用，停用前會顯示未來訂位筆數；資源列表與日程表保留已停用的標示。停用行為見 [ADR 0014](docs/adr/0014-resources-retire-not-delete.md)。重複停用或重新啟用回成功，但不重複寫稽核。
+資源詳情可批次建立時段：輸入日期區間、星期幾、一組開始時間（台北時間）、時段長度與容量，先預覽會產生與因重疊而跳過的時段，確認後才寫入；寫入時伺服器重新展開與檢查（區間 ≤ 90 天、≤ 200 筆、同批內不可重疊），寫法見 [ADR 0015](docs/adr/0015-slot-batch-in-one-statement.md)。資源詳情可停用與重新啟用，停用前會顯示未來訂位筆數；資源列表與日程表保留已停用的標示。停用行為見 [ADR 0014](docs/adr/0014-resources-retire-not-delete.md)。重複停用或重新啟用回成功，但不重複寫稽核。
 每個成功的管理寫入都在同一個 D1 batch 內寫一列 `admin_audit`（操作者 email），並輸出一行結構化 log。
 
 **Fail closed**：App 的 `ACCESS_TEAM_DOMAIN` 或 `ACCESS_AUD` 為空、JWT 缺少或無效時，所有管理 RPC 一律回 `unauthorized`（`/admin` 顯示 403），沒有任何預設放行的路徑。
