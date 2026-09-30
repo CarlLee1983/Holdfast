@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { COUNTDOWN_SESSION } from "../harness/constants";
-import { holdableSlot } from "../harness/slots";
+import { pickSlot } from "../harness/slots";
 import { memberSessionCookie } from "../harness/session-cookie";
 
 // 只驗證瀏覽器端：快轉的是瀏覽器時鐘，伺服器的到期判定不在這裡測。
@@ -12,9 +12,7 @@ test("保留倒數：歸零後顯示已到期，確認訂位按鈕停用", async
   await context.addCookies([memberSessionCookie(COUNTDOWN_SESSION)]);
   await page.clock.install();
 
-  await page.goto("/");
-  const lobby = holdableSlot(page, "countdown");
-  await lobby.getByRole("button", { name: "保留" }).click();
+  await (await pickSlot(page, "countdown")).click();
   await expect(page).toHaveURL(/\/me\?held=\d+$/);
 
   const hold = page.getByRole("region", { name: "我的保留" }).getByRole("article", { name: /大廳用餐/ });

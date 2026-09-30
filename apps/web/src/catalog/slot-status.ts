@@ -1,4 +1,4 @@
-/** 已開始但未結束的時段仍會列出，但不可預訂。 */
+/** 開始時間已到（含剛好等於現在）就算已開始；已開始的時段不可預訂，首頁也不列出。 */
 export function hasStarted(slotStartsAt: number, now: number): boolean {
   return slotStartsAt <= now;
 }
