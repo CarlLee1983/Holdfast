@@ -92,6 +92,26 @@ export const updateSlotTimeInput = z
 
 export const deleteSlotInput = z.object({ slotId });
 
+const HOUR_MS = 3_600_000;
+/** 日程表區間上限：一次查一天，留一天餘裕給前端；只用來限制查詢大小，不是業務規則。 */
+const MAX_AGENDA_RANGE_MS = 48 * HOUR_MS;
+
+/** 日程表：UTC epoch 毫秒的半開區間 [from, to)，依 `slots.starts_at` 篩選；換算台北日界線是 Web 的事。 */
+export const listAgendaInput = z
+  .object({
+    from: wholeNumber("起始時間"),
+    to: wholeNumber("結束時間"),
+    resourceId: resourceId.optional(),
+  })
+  .refine((range) => range.to > range.from, {
+    path: ["to"],
+    error: "結束時間必須晚於起始時間",
+  })
+  .refine((range) => range.to - range.from <= MAX_AGENDA_RANGE_MS, {
+    path: ["to"],
+    error: "查詢區間不可超過 48 小時",
+  });
+
 export const listSlotHoldsAndBookingsInput = z.object({ slotId });
 export const cancelBookingInput = z.object({
   slotId,
