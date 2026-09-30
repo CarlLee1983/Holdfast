@@ -12,6 +12,7 @@ const MESSAGES: Record<string, string> = {
   slot_not_found: "找不到這個時段",
   slot_in_use: "時段仍有保留或訂位紀錄（過期或已釋放的保留除外）",
   invalid_input: "輸入有誤，請修正後再送出",
+  member_not_found: "找不到這位會員",
   booking_not_found: "找不到這筆訂位",
   slot_started: "時段已開始，無法取消",
 };

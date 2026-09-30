@@ -12,6 +12,7 @@ const { title } = Astro.props;
 // 導覽列標出目前所在的區塊；路徑等於 href 或以 prefixes 的前綴比對（時段頁屬於資源區塊），之後新增區塊在這裡加一列
 const sections = [
   { label: "日程表", href: "/admin", prefixes: [] },
+  { label: "查會員", href: "/admin/members", prefixes: ["/admin/members"] },
   { label: "資源", href: "/admin/resources", prefixes: ["/admin/resources", "/admin/slots"] },
   { label: "稽核紀錄", href: "/admin/audit", prefixes: ["/admin/audit"] },
 ];

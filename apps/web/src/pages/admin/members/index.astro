@@ -1,0 +1,52 @@
+---
+// 查會員：依名稱或 email 搜尋（GET ?q=），結果連到會員頁
+import { env } from "cloudflare:workers";
+import { readAccessJwt } from "../../../admin/access-jwt";
+import { describeFailure } from "../../../admin/reasons";
+import AccessDenied from "../../../components/AccessDenied.astro";
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+
+export const prerender = false;
+
+const jwt = readAccessJwt(Astro.request, env, import.meta.env.DEV);
+const query = (Astro.url.searchParams.get("q") ?? "").trim();
+// 沒有關鍵字時只顯示表單，不打 RPC
+const result = query === "" ? null : await env.APP.searchMembersForAdmin(jwt, { query });
+const unauthorized = result !== null && !result.ok && result.reason === "unauthorized";
+if (unauthorized) Astro.response.status = 403;
+else if (result && !result.ok) Astro.response.status = result.reason === "invalid_input" ? 422 : 500;
+
+const members = result?.ok ? result.data : [];
+const failure = result && !result.ok && !unauthorized ? describeFailure(result) : null;
+const firstFieldError = failure ? Object.values(failure.fields).flat()[0] : undefined;
+---
+
+<AdminLayout title="查會員">
+  {
+    unauthorized ? (
+      <AccessDenied />
+    ) : (
+      <>
+        <form class="agenda-filter" method="get" action="/admin/members">
+          <label>名稱或 email<input type="search" name="q" value={query} maxlength="200" required /></label>
+          <button type="submit">搜尋</button>
+        </form>
+        {failure && <p class="error" role="alert">{failure.message}{firstFieldError ? `：${firstFieldError}` : ""}</p>}
+        {result?.ok && members.length === 0 && <p>找不到符合「{query}」的會員，請換個關鍵字。</p>}
+        {result?.ok && members.length > 0 && (
+          <>
+            <ul class="member-results">
+              {members.map((m) => (
+                <li>
+                  <a href={`/admin/members/${encodeURIComponent(m.id)}`}>{m.name}</a>
+                  <span class="meta">{m.email}</span>
+                </li>
+              ))}
+            </ul>
+            {members.length >= 20 && <p class="meta">只顯示前 20 位，請輸入更完整的關鍵字縮小範圍。</p>}
+          </>
+        )}
+      </>
+    )
+  }
+</AdminLayout>

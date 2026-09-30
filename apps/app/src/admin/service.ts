@@ -18,8 +18,10 @@ import {
   deleteSlotInput,
   getResourceInput,
   listAgendaInput,
+  getMemberInput,
   listSlotHoldsAndBookingsInput,
   listAuditInput,
+  searchMembersInput,
   updateResourceInput,
   updateSlotCapacityInput,
   updateSlotTimeInput,
@@ -28,10 +30,14 @@ import {
   selectAdminAudit,
   selectAdminSlots,
   selectAgenda,
+  selectMemberDetail,
+  selectMembersMatching,
   slotExists,
   type AdminAuditRecord,
   type AdminSlot,
   type AgendaSlot,
+  type MemberDetail,
+  type MemberSummary,
 } from "./queries";
 
 export interface SlotRecord {
@@ -355,6 +361,19 @@ export function createAdminService(d1: D1Database, clock: Clock, accessConfig: A
       return authorized(jwt, listAgendaInput, input, async (_actor, range) =>
         ok(await selectAgenda(db, range, clock.now())),
       );
+    },
+
+    searchMembersForAdmin(jwt: unknown, input: unknown): Promise<AdminResult<MemberSummary[]>> {
+      return authorized(jwt, searchMembersInput, input, async (_actor, { query }) =>
+        ok(await selectMembersMatching(db, query)),
+      );
+    },
+
+    getMemberForAdmin(jwt: unknown, input: unknown): Promise<AdminResult<MemberDetail, "member_not_found">> {
+      return authorized(jwt, getMemberInput, input, async (_actor, { memberId }) => {
+        const detail = await selectMemberDetail(db, memberId, clock.now());
+        return detail ? ok(detail) : fail("member_not_found");
+      });
     },
 
     updateSlotCapacity(
