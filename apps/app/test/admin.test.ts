@@ -520,6 +520,151 @@ describe("deleteSlot", () => {
   });
 });
 
+describe("updateSlotTime", () => {
+  let resourceId: number;
+  let slotId: number;
+  beforeEach(async () => {
+    resourceId = await insertResource({ name: "大廳" });
+    slotId = await insertSlot(resourceId, NOW + HOUR, NOW + 2 * HOUR, 10);
+  });
+
+  const move = (startsAt: number, endsAt: number, id = slotId) => app.updateSlotTime(jwt, { slotId: id, startsAt, endsAt });
+
+  it("沒有任何保留：改時間、回傳更新後的時段，稽核含前後時間", async () => {
+    expect(await move(NOW + 3 * HOUR, NOW + 4 * HOUR)).toEqual({
+      ok: true,
+      data: { id: slotId, resourceId, startsAt: NOW + 3 * HOUR, endsAt: NOW + 4 * HOUR, capacity: 10 },
+    });
+
+    const listed = await app.listSlotsForAdmin(jwt, resourceId);
+    expect(listed.ok && listed.data.map((s) => [s.startsAt, s.endsAt])).toEqual([[NOW + 3 * HOUR, NOW + 4 * HOUR]]);
+    const rows = await auditRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      actor_email: ADMIN_EMAIL,
+      action: "slot.update_time",
+      target_type: "slot",
+      target_id: slotId,
+      at: NOW,
+    });
+    expect(JSON.parse(rows[0]!.detail)).toEqual({
+      before: { startsAt: NOW + HOUR, endsAt: NOW + 2 * HOUR },
+      after: { startsAt: NOW + 3 * HOUR, endsAt: NOW + 4 * HOUR },
+    });
+  });
+
+  it.each([
+    ["有效保留", "held", NOW + 1000],
+    ["訂位", "confirmed", NOW - 1],
+    ["只剩已取消的訂位", "cancelled", NOW - HOUR],
+  ] as const)("有%s：回傳 slot_in_use，時間與稽核都不變", async (_label, status, expiresAt) => {
+    await insertHold(slotId, 2, status, expiresAt);
+
+    expect(await move(NOW + 3 * HOUR, NOW + 4 * HOUR)).toEqual({ ok: false, reason: "slot_in_use" });
+    const listed = await app.listSlotsForAdmin(jwt, resourceId);
+    expect(listed.ok && listed.data[0]!.startsAt).toBe(NOW + HOUR);
+    expect(await countRows("admin_audit")).toBe(0);
+  });
+
+  it("只剩已過期或已釋放的保留：可改時間，這些紀錄不受影響", async () => {
+    await insertHold(slotId, 2, "held", NOW);
+    await insertHold(slotId, 2, "released", NOW - HOUR);
+
+    expect((await move(NOW + 3 * HOUR, NOW + 4 * HOUR)).ok).toBe(true);
+    expect(await countRows("holds")).toBe(2);
+  });
+
+  it("先落地的寫入把有效時間推過保留的到期時間後，帶到期前請求時間的修改視該保留為可丟棄（ADR 0011）", async () => {
+    const held = await app.createHold("m1", { slotId, seats: 1, idempotencyKey: "k" });
+    if (!held.ok) throw new Error(`建立保留失敗：${held.reason}`);
+    const laterSlot = await insertSlot(resourceId, NOW + 5 * HOUR, NOW + 6 * HOUR, 10);
+    const expiresAt = NOW + 600_000;
+    setNow(expiresAt);
+    expect((await app.createHold("m2", { slotId: laterSlot, seats: 1, idempotencyKey: "push" })).ok).toBe(true);
+
+    setNow(expiresAt - 1);
+
+    expect((await move(NOW + 3 * HOUR, NOW + 4 * HOUR)).ok).toBe(true);
+  });
+
+  describe("同一資源的重疊（排除自己）", () => {
+    beforeEach(async () => {
+      await insertSlot(resourceId, NOW + 3 * HOUR, NOW + 5 * HOUR, 10);
+    });
+
+    it.each([
+      ["與後段重疊", NOW + 2 * HOUR, NOW + 4 * HOUR],
+      ["包住其他時段", NOW + 2 * HOUR, NOW + 6 * HOUR],
+      ["被其他時段包住", NOW + 3.5 * HOUR, NOW + 4.5 * HOUR],
+    ])("%s：回傳 slot_overlaps，時間與稽核都不變", async (_label, start, end) => {
+      expect(await move(start, end)).toEqual({ ok: false, reason: "slot_overlaps" });
+      const listed = await app.listSlotsForAdmin(jwt, resourceId);
+      expect(listed.ok && listed.data[0]!.startsAt).toBe(NOW + HOUR);
+      expect(await countRows("admin_audit")).toBe(0);
+    });
+
+    it("與自己原本的時間重疊不算重疊；相鄰其他時段也不算", async () => {
+      expect((await move(NOW + 1.5 * HOUR, NOW + 3 * HOUR)).ok).toBe(true);
+    });
+
+    it("不同資源的同一時間不算重疊", async () => {
+      const room = await insertResource({ name: "包廂" });
+      const other = await insertSlot(room, NOW + 10 * HOUR, NOW + 11 * HOUR, 5);
+
+      expect((await move(NOW + 3 * HOUR, NOW + 5 * HOUR, other)).ok).toBe(true);
+    });
+  });
+
+  it("其他資源同一時間、同資源相鄰（首尾相接）的時段：都不算重疊，修改成功", async () => {
+    const room = await insertResource({ name: "包廂" });
+    await insertSlot(room, NOW + 3 * HOUR, NOW + 4 * HOUR, 5);
+    await insertSlot(resourceId, NOW + 4 * HOUR, NOW + 5 * HOUR, 10);
+    await insertSlot(resourceId, NOW + 2 * HOUR, NOW + 3 * HOUR, 10);
+
+    expect((await move(NOW + 3 * HOUR, NOW + 4 * HOUR)).ok).toBe(true);
+  });
+
+  it("同時有保留或訂位紀錄又重疊：回報 slot_in_use", async () => {
+    await insertSlot(resourceId, NOW + 3 * HOUR, NOW + 5 * HOUR, 10);
+    await insertHold(slotId, 1, "confirmed", NOW - 1);
+
+    expect(await move(NOW + 2 * HOUR, NOW + 4 * HOUR)).toEqual({ ok: false, reason: "slot_in_use" });
+  });
+
+  it("結構化 log 的 detail 與 D1 稽核列的 detail 一致", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      expect((await move(NOW + 3 * HOUR, NOW + 4 * HOUR)).ok).toBe(true);
+
+      const logged = log.mock.calls
+        .map(([line]) => JSON.parse(String(line)))
+        .filter((entry) => entry.event === "admin_audit");
+      expect(logged).toHaveLength(1);
+      const [row] = await auditRows();
+      expect(logged[0].detail).toEqual(JSON.parse(row!.detail));
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it("未知的時段回傳 slot_not_found，且不寫稽核", async () => {
+    expect(await move(NOW + 3 * HOUR, NOW + 4 * HOUR, 999_999)).toEqual({ ok: false, reason: "slot_not_found" });
+    expect(await countRows("admin_audit")).toBe(0);
+  });
+
+  it.each([
+    ["結束不晚於開始", { startsAt: NOW + 3 * HOUR, endsAt: NOW + 3 * HOUR }, "endsAt"],
+    ["開始時間非整數", { startsAt: 1.5, endsAt: NOW + 3 * HOUR }, "startsAt"],
+    ["結束時間是 NaN", { startsAt: NOW + 3 * HOUR, endsAt: NaN }, "endsAt"],
+  ])("輸入無效（%s）回傳 invalid_input，不寫入", async (_label, input, field) => {
+    const result = await app.updateSlotTime(jwt, { slotId, ...input });
+
+    expect(result).toMatchObject({ ok: false, reason: "invalid_input" });
+    expect(!result.ok && result.reason === "invalid_input" && result.fields[field]?.length).toBeGreaterThan(0);
+    expect(await countRows("admin_audit")).toBe(0);
+  });
+});
+
 describe("listSlotsForAdmin", () => {
   let resourceId: number;
   beforeEach(async () => {

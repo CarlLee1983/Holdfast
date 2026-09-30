@@ -144,6 +144,10 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
     return this.#admin().updateSlotCapacity(jwt, input);
   }
 
+  updateSlotTime(jwt: string, input: unknown) {
+    return this.#admin().updateSlotTime(jwt, input);
+  }
+
   deleteSlot(jwt: string, input: unknown) {
     return this.#admin().deleteSlot(jwt, input);
   }

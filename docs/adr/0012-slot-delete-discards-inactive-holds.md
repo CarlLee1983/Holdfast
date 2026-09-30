@@ -10,4 +10,6 @@ status: accepted
 
 **Consequences:** 「可丟棄」的定義只在 `discardableHold`，判定、稽核、刪除三句共用同一個條件，在同一個 batch 內執行（[ADR 0004](0004-oversell-guard-in-single-statement.md) 的做法）。新增 holds 狀態時要決定它是否可丟棄；預設不是。
 
+修改時段時間（`updateSlotTime`）使用同一個 `discardableHold` 判定：時段底下有不可丟棄的紀錄就拒絕。可丟棄的紀錄在修改時間時保留、不刪除，因為沒有外鍵要求移除它們。
+
 **Falsified if:** `apps/app/src/holds/schema.ts` 移除 `holds.slot_id` 的外鍵，或訂位歷史改存到別處；或 `apps/app/src/holds/occupancy.ts` 的 `discardableHold` 判定改成不看狀態。
