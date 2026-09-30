@@ -96,3 +96,5 @@ export type UpdateResourceInput = z.output<typeof updateResourceInput>;
 export type CreateSlotInput = z.output<typeof createSlotInput>;
 export type UpdateSlotCapacityInput = z.output<typeof updateSlotCapacityInput>;
 export type DeleteSlotInput = z.output<typeof deleteSlotInput>;
+
+export const getResourceInput = resourceId;

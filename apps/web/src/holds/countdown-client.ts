@@ -1,7 +1,7 @@
 import { formatCountdown, isCountdownExpired } from "./countdown";
 
 /**
- * 保留倒數的用戶端行為，/me 與確認頁共用。DOM 約定（樣式在 styles/base.css）：
+ * 保留倒數的用戶端行為，/me 與確認頁共用。DOM 約定（樣式在 styles/member.css）：
  * - 每一列倒數是一個 `[data-remaining-ms]` 元素，值是伺服器算出的剩餘毫秒；選用 `data-label`，到期時用於播報。
  * - 列內必須有 `.hold-countdown`（預設 hidden 的倒數區塊）與其中的 `.countdown-text`（倒數文字）；缺少任一個的列直接略過。
  * - 列內選用 `button[data-confirm]`（到期時停用）與 `a[data-continue]`（「繼續確認」連結，到期時隱藏，免得點進 404）。

@@ -1,4 +1,5 @@
-/* 會員面的基礎元素樣式，只使用 tokens.css 的變數。 */
+/* 會員面與管理後台共用的基礎元素樣式（重設、字體、控制項、訊息、小標籤），只使用 tokens.css 的變數。
+   只有會員頁用到的元件樣式放 member.css。 */
 *,
 *::before,
 *::after {
@@ -127,7 +128,8 @@ button.destructive:hover:not(:disabled) {
   border-color: var(--color-ink);
 }
 
-input {
+input,
+textarea {
   font: inherit;
   min-height: var(--control-height);
   padding: 0 var(--space-sm);
@@ -136,7 +138,8 @@ input {
   background: var(--color-paper);
   color: var(--color-ink);
 }
-input:hover {
+input:hover,
+textarea:hover {
   border-color: var(--color-muted);
 }
 
@@ -177,102 +180,6 @@ label {
 .tag--quiet {
   border-style: dashed;
   color: var(--color-muted);
-}
-
-/* 細線分隔的列表：取代卡片，每一列上下以 1px 細線隔開 */
-.rule-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  border-top: 1px solid var(--color-rule);
-}
-.rule-list > li {
-  border-bottom: 1px solid var(--color-rule);
-}
-.rule-item {
-  display: grid;
-  gap: var(--space-2xs);
-  padding-block: var(--space-md);
-}
-.rule-item h3 {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.rule-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: var(--space-sm);
-}
-/* 列表內的項目名稱（資源名稱）：無襯線小字，讓時間成為主角 */
-.rule-title {
-  font-family: var(--font-body);
-  font-size: var(--text-sm);
-  font-weight: 500;
-  letter-spacing: 0.04em;
-}
-.meta {
-  font-size: var(--text-sm);
-  color: var(--color-muted);
-}
-/* 列表沒有項目時的說明 */
-.empty {
-  padding-block: var(--space-md);
-  border-block: 1px solid var(--color-rule);
-  color: var(--color-muted);
-  font-size: var(--text-sm);
-}
-/* 一組「小標＋細線列表」的區塊 */
-.list-section {
-  display: grid;
-  gap: var(--space-xs);
-  margin-top: var(--space-md);
-}
-
-/* 區塊小標：字距加寬、右側延伸一條細線 */
-.eyebrow {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  font-family: var(--font-body);
-  font-size: var(--text-xs);
-  font-weight: 500;
-  color: var(--color-muted);
-  letter-spacing: 0.12em;
-}
-.eyebrow::after {
-  content: "";
-  flex: 1;
-  border-top: 1px solid var(--color-rule);
-}
-
-/* 頁面的主要動作（確認頁的按鈕、完成頁的連結）：加大的墨綠實心，連結版另補上按鈕的外觀 */
-.primary-action {
-  min-height: var(--control-height-lg);
-  padding-inline: var(--space-xl);
-}
-a.primary-action {
-  display: inline-grid;
-  place-items: center;
-  border-radius: var(--radius);
-  background: var(--color-brand);
-  color: var(--color-on-brand);
-  font-size: var(--text-sm);
-  font-weight: 500;
-  letter-spacing: 0.12em;
-  text-decoration: none;
-}
-a.primary-action:hover {
-  background: var(--color-brand-2);
-}
-
-/* 保留倒數（DOM 約定見 holds/countdown-client.ts）：到期後由 script 換成「已到期」並加上 hold-expired */
-.hold-countdown {
-  font-variant-numeric: tabular-nums;
-}
-.hold-countdown.hold-expired {
-  color: var(--color-danger);
-  font-weight: 500;
 }
 
 /* 視覺隱藏但保留給輔助科技（例如預先存在的 aria-live 播報區） */

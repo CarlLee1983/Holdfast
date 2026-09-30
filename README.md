@@ -51,7 +51,7 @@ bun run e2e            # Playwright 主流程（首次先在 e2e/ 執行 bunx pl
 - 會員登入需要 secrets，缺少時會員登入不可用（見「會員登入」）；本機先 `cp apps/app/.dev.vars.example apps/app/.dev.vars` 並填值（見「會員登入」）。
 - 本機 D1 狀態放在 repo 根目錄的 `.wrangler/state`，`dev`、`preview` 與 `db:*` 共用；首次啟動前先 `db:migrate` 再 `db:seed`。
 - 改 schema：編輯 `apps/app/src/**/schema.ts`，在 `apps/app` 執行 `bun run db:generate` 產生 migration。
-- 會員面樣式為純 CSS（全域 token 加 Astro scoped style），視覺語言是潮間 Tidal Table（墨綠、米灰紙色、細線、無卡片），字型 Noto Serif TC／Noto Sans TC 由 Google Fonts 載入；店家資訊集中在 `apps/web/src/merchant/merchant.ts`。不使用 Tailwind 或元件庫；管理後台不共用這份 token。
+- 會員面樣式為純 CSS（全域 token 加 Astro scoped style），視覺語言是潮間 Tidal Table（墨綠、米灰紙色、細線、無卡片），字型 Noto Serif TC／Noto Sans TC 由 Google Fonts 載入；店家資訊集中在 `apps/web/src/merchant/merchant.ts`。不使用 Tailwind 或元件庫；管理後台共用同一份 token 與 `base.css`，另有自己的緊湊版面樣式 `admin.css`；只有會員頁用的元件樣式放 `member.css`。
 - 時間一律以 UTC epoch 毫秒儲存與傳遞，只有 Web Worker 顯示時換成 Asia/Taipei。
 - 測試怎麼替換「現在」：main Worker 與測試跑在同一個 isolate，`test/clock.ts` 的 `setNow()` 偽造全域 `Date`，經 RPC 呼叫的 `systemClock` 就會讀到；因此應用程式碼只能透過 `Clock` 取得時間，直接呼叫 `Date.now()` 或 `new Date()` 會繞過測試的時間控制。
 - E2E 驗證 Astro、RPC 與 App Worker 的接線，不重複業務規則；它用自己的狀態（`.wrangler/e2e`，每次重建）與固定的測試 secret，不碰 `.wrangler/state` 與 `.dev.vars`，埠固定 8790。社群登入以直接寫入 session 取代（ADR 0013），production 不含任何測試登入。
@@ -59,7 +59,7 @@ bun run e2e            # Playwright 主流程（首次先在 e2e/ 執行 bunx pl
 
 ## 管理後台
 
-`/admin`（資源列表、建立與修改資源、建立時段、查看時段內的保留與訂位、取消訂位；時間以台北時間輸入與顯示）前面放 Cloudflare Access，理由與取捨見 [ADR 0007](docs/adr/0007-admin-behind-cloudflare-access.md)。會員可在 `/me` 看到被管理者取消的訂位。
+`/admin/resources`（`/admin` 導向這裡；資源列表、建立與修改資源、建立時段、查看時段內的保留與訂位、取消訂位；時間以台北時間輸入與顯示；管理表單同樣有防重複送出）前面放 Cloudflare Access，理由與取捨見 [ADR 0007](docs/adr/0007-admin-behind-cloudflare-access.md)。會員可在 `/me` 看到被管理者取消的訂位。
 Web Worker 只把請求裡的 `Cf-Access-Jwt-Assertion` 原樣轉交給 App Worker，授權完全由 App 的管理 RPC 自己驗簽決定（RS256、`aud`、`iss`、未過期，容許 30 秒時鐘誤差）。
 每個成功的管理寫入都在同一個 D1 batch 內寫一列 `admin_audit`（操作者 email），並輸出一行結構化 log。
 
