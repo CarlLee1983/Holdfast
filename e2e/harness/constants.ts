@@ -45,3 +45,10 @@ export const NO_JS_SESSION = { id: "e2e-no-js-session", token: "e2e-no-js-sessio
  */
 export const HOLD_OWNER_MEMBER = { id: "e2e-hold-owner-member", name: "E2E 保留擁有者", email: "e2e-hold-owner@members.holdfast.invalid" } as const;
 export const HOLD_OWNER_SESSION = { id: "e2e-hold-owner-session", token: "e2e-hold-owner-session-token" } as const;
+
+/**
+ * 未登入選時段、登入後回到首頁的測試專用會員。該測試斷言「回來後還沒有任何保留」，
+ * 共用其他會員會看到它們並行建立的保留，所以另立一位；它從不建立保留。
+ */
+export const LOGIN_RESUME_MEMBER = { id: "e2e-login-resume-member", name: "E2E 登入銜接會員", email: "e2e-login-resume@members.holdfast.invalid" } as const;
+export const LOGIN_RESUME_SESSION = { id: "e2e-login-resume-session", token: "e2e-login-resume-session-token" } as const;

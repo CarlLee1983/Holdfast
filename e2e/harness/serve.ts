@@ -11,7 +11,7 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { experimental_readRawConfig } from "wrangler";
-import { AUTH_SECRET, BASE_URL, COUNTDOWN_MEMBER, COUNTDOWN_SESSION, DOUBLE_SUBMIT_MEMBER, DOUBLE_SUBMIT_SESSION, HOLD_OWNER_MEMBER, HOLD_OWNER_SESSION, MEMBER, NO_JS_MEMBER, NO_JS_SESSION, PORT, SESSION, SIGN_OUT_SESSION } from "./constants";
+import { AUTH_SECRET, BASE_URL, COUNTDOWN_MEMBER, COUNTDOWN_SESSION, DOUBLE_SUBMIT_MEMBER, DOUBLE_SUBMIT_SESSION, HOLD_OWNER_MEMBER, HOLD_OWNER_SESSION, LOGIN_RESUME_MEMBER, LOGIN_RESUME_SESSION, MEMBER, NO_JS_MEMBER, NO_JS_SESSION, PORT, SESSION, SIGN_OUT_SESSION } from "./constants";
 
 const ROOT = resolve(import.meta.dirname, "../..");
 const APP_DIR = join(ROOT, "apps/app");
@@ -73,6 +73,7 @@ function insertMemberSession(): void {
     { member: DOUBLE_SUBMIT_MEMBER, sessions: [DOUBLE_SUBMIT_SESSION] },
     { member: NO_JS_MEMBER, sessions: [NO_JS_SESSION] },
     { member: HOLD_OWNER_MEMBER, sessions: [HOLD_OWNER_SESSION] },
+    { member: LOGIN_RESUME_MEMBER, sessions: [LOGIN_RESUME_SESSION] },
   ];
   const sql = members
     .map(
