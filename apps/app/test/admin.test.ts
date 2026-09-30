@@ -118,7 +118,7 @@ describe("createResource", () => {
 });
 
 describe("updateResource", () => {
-  const changed = { name: "貴賓包廂", holdTtlSeconds: 900, seatsPerHold: 8, cancellationCutoffSeconds: 86400 };
+  const changed = { name: "貴賓包廂", holdTtlSeconds: 900, seatsPerHold: 8, cancellationCutoffSeconds: 86400, description: "" };
 
   it("更新資源全部欄位，只影響該資源，並寫入稽核紀錄", async () => {
     const id = await insertResource({ name: "大廳" });
@@ -160,6 +160,17 @@ describe("updateResource", () => {
     expect(cleared.ok && cleared.data.description).toBeNull();
     const rows = await auditRows();
     expect(JSON.parse(rows[0]!.detail)).toMatchObject({ before: { description: "舊說明" }, after: { description: "新說明" } });
+  });
+
+  it("修改時省略說明被拒，既有說明不會悄悄被清掉", async () => {
+    const id = await insertResource({ name: "大廳", description: "舊說明" });
+    const { description: _omitted, ...withoutDescription } = changed;
+
+    const result = await app.updateResource(jwt, { id, ...withoutDescription });
+
+    expect(result).toMatchObject({ ok: false, reason: "invalid_input" });
+    const list = await app.listResourcesForAdmin(jwt);
+    expect(list.ok && list.data[0]?.description).toBe("舊說明");
   });
 
   it("未知的資源回傳 resource_not_found，且不寫稽核紀錄", async () => {

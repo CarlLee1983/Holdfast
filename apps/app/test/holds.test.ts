@@ -75,6 +75,7 @@ describe("createHold 成功", () => {
       id: resourceId,
       name: "大廳",
       holdTtlSeconds: 60,
+      description: "",
       seatsPerHold: 4,
       cancellationCutoffSeconds: 3600,
     });
