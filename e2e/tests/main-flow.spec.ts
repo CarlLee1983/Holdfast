@@ -1,8 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { chooseOption, holdButton, slotButton, slotInfo } from "../harness/slots";
+import { chooseOption, confirmButton, holdButton, slotButton, slotInfo } from "../harness/slots";
 import { memberSessionCookie } from "../harness/session-cookie";
 
-test("會員主流程：登入 → 選人數、日期與時段 → 保留 → 確認 → 會員頁看到訂位 → 取消", async ({ page, context }) => {
+test("會員主流程：登入 → 選人數、日期與時段 → 保留 → 確認頁確認 → 會員頁看到訂位 → 取消", async ({ page, context }) => {
   await context.addCookies([memberSessionCookie()]);
 
   await page.goto("/me");
@@ -22,13 +22,22 @@ test("會員主流程：登入 → 選人數、日期與時段 → 保留 → �
   await expect(slotButton(page, "main")).toHaveAttribute("aria-pressed", "true");
   await holdButton(page).click();
 
-  await expect(page).toHaveURL(/\/me\?held=\d+$/);
-  await expect(page.getByRole("status")).toContainText("保留成功");
-  // 保留卡片的可及名稱是「資源名稱＋日期＋時間」，限定在「我的保留」區塊內
-  const holds = page.getByRole("region", { name: "我的保留" });
-  await expect(holds.getByRole("article", { name: /大廳用餐/ })).toHaveCount(1);
+  // 保留後進入專屬的確認頁；確認只在這一頁發生
+  await expect(page).toHaveURL(/\/holds\/\d+$/);
+  await expect(page.getByRole("heading", { level: 1, name: "確認訂位" })).toBeVisible();
+  const detail = page.getByRole("main");
+  await expect(detail).toContainText("3 位");
+  await expect(detail).toContainText("大廳用餐");
+  await expect(detail).toContainText("面向開放廚房的長桌與雙人座");
+  await expect(detail).toContainText("以E2E 會員的身分訂位");
+  const notes = page.getByRole("region", { name: "訂位須知" });
+  await expect(notes).toContainText("保留 10 分鐘，逾時自動釋放");
+  await expect(notes).toContainText("可於用餐前 2 小時前自行取消");
+  await expect(notes).toContainText("超過取消時限請來電 02-0000-0000");
+  await expect(page.getByRole("link", { name: "重新選擇時段" })).toHaveAttribute("href", `/?seats=3&date=${date}`);
 
-  await page.getByRole("button", { name: "確認訂位" }).click();
+  await confirmButton(page).click();
+  await expect(page).toHaveURL(/\/me\?confirmed=\d+$/);
   await expect(page.getByRole("status")).toHaveText("訂位成功");
   await expect(page.getByText("目前沒有有效的保留")).toBeVisible();
   const booking = page.getByRole("region", { name: "我的訂位" }).getByRole("article", { name: /大廳用餐/ });

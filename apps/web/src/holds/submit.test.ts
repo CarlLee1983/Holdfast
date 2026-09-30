@@ -20,10 +20,10 @@ describe("handleHoldPost", () => {
     expect(app.createHold).not.toHaveBeenCalled();
   });
 
-  it("成功：303 到 /me?held=<id>，以會員編號與表單內容呼叫 App", async () => {
+  it("成功：303 到確認頁 /holds/<id>，以會員編號與表單內容呼叫 App", async () => {
     const app = fakeApp({ ok: true, data: { id: 9 } });
 
-    expect(await run(app, member)).toEqual({ redirect: "/me?held=9", status: 303 });
+    expect(await run(app, member)).toEqual({ redirect: "/holds/9", status: 303 });
     expect(app.createHold).toHaveBeenCalledWith("m1", { slotId: 3, seats: 2, idempotencyKey: "k" });
   });
 

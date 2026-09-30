@@ -37,3 +37,11 @@ export const DOUBLE_SUBMIT_SESSION = { id: "e2e-double-submit-session", token: "
 /** 無 JavaScript 測試專用的會員與 session：與防重複送出的其他測試各自獨立，/me 的保留列表才不會混入彼此的保留。 */
 export const NO_JS_MEMBER = { id: "e2e-no-js-member", name: "E2E 無 JS 會員", email: "e2e-no-js@members.holdfast.invalid" } as const;
 export const NO_JS_SESSION = { id: "e2e-no-js-session", token: "e2e-no-js-session-token" } as const;
+
+/**
+ * 確認頁「別人的保留」測試專用的會員：由它建立一筆保留，再用一般的 MEMBER 打開那個網址。
+ * 不能借用 MEMBER 建立保留，否則會在 main-flow 的「目前沒有有效的保留」前留下殘留；也不借其他 spec 的專用會員，
+ * 以免改變它們的保留額度。
+ */
+export const HOLD_OWNER_MEMBER = { id: "e2e-hold-owner-member", name: "E2E 保留擁有者", email: "e2e-hold-owner@members.holdfast.invalid" } as const;
+export const HOLD_OWNER_SESSION = { id: "e2e-hold-owner-session", token: "e2e-hold-owner-session-token" } as const;

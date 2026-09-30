@@ -1,5 +1,4 @@
 import { loginUrl } from "../auth/member";
-import { toNumber } from "../shared/form-values";
 import { withFirstFieldDetail } from "../shared/reasons";
 import { holdFailureStatus } from "./reasons";
 
@@ -14,9 +13,10 @@ type RpcResult =
 
 interface MemberPostSpec {
   member: { memberId: string } | null;
-  form: FormData;
+  /** 要操作的編號（可能是 NaN：合法性交給 App 驗證並回 invalid_input）。 */
+  id: number;
   url: URL;
-  /** 表單裡放編號的欄位名稱，同時是送給 App 的輸入欄位名稱。 */
+  /** 送給 App 的輸入欄位名稱。 */
   field: string;
   /** 成功後導回 `/me?<successParam>=<id>`。 */
   successParam: string;
@@ -24,10 +24,10 @@ interface MemberPostSpec {
   describe: (reason: string) => string;
 }
 
-/** 會員頁表單 POST 的共同流程：未登入導向登入；成功導向會員頁；失敗回可顯示的訊息與狀態碼。 */
+/** 會員頁與確認頁 POST 的共同流程：未登入導向登入；成功導向會員頁；失敗回可顯示的訊息與狀態碼。 */
 export async function handleMemberFormPost({
   member,
-  form,
+  id,
   url,
   field,
   successParam,
@@ -36,7 +36,7 @@ export async function handleMemberFormPost({
 }: MemberPostSpec): Promise<MemberPostOutcome> {
   if (!member) return { redirect: loginUrl(url), status: 303 };
 
-  const result = await call(member.memberId, { [field]: toNumber(form.get(field)) });
+  const result = await call(member.memberId, { [field]: id });
   if (result.ok) return { redirect: `/me?${successParam}=${result.data.id}`, status: 303 };
 
   const message = describe(result.reason);

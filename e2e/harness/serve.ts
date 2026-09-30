@@ -1,6 +1,6 @@
 /**
  * E2E 的受測伺服器（Playwright 的 webServer 啟動它）：
- * 重建 E2E 專用的狀態 → 建置 Web → 套用 migration 與 seed → 寫入測試會員的 session（含一個專供登出測試的，以及倒數、防重複送出、無 JS 測試各自專用的會員） → 以 `wrangler dev` 跑兩個 Worker。
+ * 重建 E2E 專用的狀態 → 建置 Web → 套用 migration 與 seed → 寫入測試會員的 session（含一個專供登出測試的，以及倒數、防重複送出、無 JS、確認頁別人的保留測試各自專用的會員） → 以 `wrangler dev` 跑兩個 Worker。
  *
  * 不碰開發者的本機狀態：D1 放在 `.wrangler/e2e/state`；Web 建置到 `.wrangler/e2e/web`（不覆寫 `apps/web/dist`）；
  * 兩個 Worker 的設定檔旁都放 E2E 自己的 `.dev.vars`（wrangler 只讀設定檔旁的 `.dev.vars`，
@@ -11,7 +11,7 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { experimental_readRawConfig } from "wrangler";
-import { AUTH_SECRET, BASE_URL, COUNTDOWN_MEMBER, COUNTDOWN_SESSION, DOUBLE_SUBMIT_MEMBER, DOUBLE_SUBMIT_SESSION, MEMBER, NO_JS_MEMBER, NO_JS_SESSION, PORT, SESSION, SIGN_OUT_SESSION } from "./constants";
+import { AUTH_SECRET, BASE_URL, COUNTDOWN_MEMBER, COUNTDOWN_SESSION, DOUBLE_SUBMIT_MEMBER, DOUBLE_SUBMIT_SESSION, HOLD_OWNER_MEMBER, HOLD_OWNER_SESSION, MEMBER, NO_JS_MEMBER, NO_JS_SESSION, PORT, SESSION, SIGN_OUT_SESSION } from "./constants";
 
 const ROOT = resolve(import.meta.dirname, "../..");
 const APP_DIR = join(ROOT, "apps/app");
@@ -72,6 +72,7 @@ function insertMemberSession(): void {
     { member: COUNTDOWN_MEMBER, sessions: [COUNTDOWN_SESSION] },
     { member: DOUBLE_SUBMIT_MEMBER, sessions: [DOUBLE_SUBMIT_SESSION] },
     { member: NO_JS_MEMBER, sessions: [NO_JS_SESSION] },
+    { member: HOLD_OWNER_MEMBER, sessions: [HOLD_OWNER_SESSION] },
   ];
   const sql = members
     .map(

@@ -1,23 +1,30 @@
+import { loginUrl } from "../auth/member";
+import { parseHoldId } from "./hold-page";
 import { handleMemberFormPost, type MemberPostOutcome } from "./member-post";
 import { describeConfirmFailure } from "./reasons";
-
-/** 確認表單的 `intent` 欄位值；會員頁的確認與取消都 POST 到 `/me`，靠它分辨。 */
-export const CONFIRM_INTENT = "confirm";
 
 export type ConfirmPostOutcome = MemberPostOutcome;
 
 interface ConfirmPostContext {
   member: { memberId: string } | null;
-  form: FormData;
+  /** 網址 `/holds/:id` 的 id 原始字串；確認的對象由網址決定，不讀表單。 */
+  holdId: string | undefined;
   app: Pick<Env["APP"], "confirmHold">;
   url: URL;
 }
 
-/** 處理會員頁「確認」表單的 POST。 */
-export function handleConfirmPost({ member, form, app, url }: ConfirmPostContext): Promise<ConfirmPostOutcome> {
+/**
+ * 處理確認頁「確認訂位」表單的 POST：未登入導向登入；成功導向 `/me?confirmed=<id>`；失敗回可顯示的訊息與狀態碼。
+ * 確認的對象是網址上的保留，所以沒有 JavaScript 時確認的也一定是畫面上那一筆；id 不是正整數就當作輸入有誤，不呼叫 App。
+ */
+export async function handleConfirmPost({ member, holdId, app, url }: ConfirmPostContext): Promise<ConfirmPostOutcome> {
+  if (!member) return { redirect: loginUrl(url), status: 303 };
+  const id = parseHoldId(holdId);
+  if (id === null) return { error: describeConfirmFailure("invalid_input"), status: 422 };
+
   return handleMemberFormPost({
     member,
-    form,
+    id,
     url,
     field: "holdId",
     successParam: "confirmed",
