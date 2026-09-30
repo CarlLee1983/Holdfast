@@ -1,6 +1,8 @@
 const actions: Record<string, string> = {
   "resource.create": "建立資源",
   "resource.update": "修改資源",
+  "resource.retire": "停用資源",
+  "resource.reactivate": "重新啟用資源",
   "slot.create": "建立時段",
   "slot.update_capacity": "調整時段容量",
   "slot.delete": "刪除時段",

@@ -4,6 +4,8 @@ import { auditAction, auditCursor, auditDetail } from "./audit";
 describe("audit display", () => {
   it("shows readable known actions while retaining their code", () => {
     expect(auditAction("booking.cancel")).toBe("取消訂位（booking.cancel）");
+    expect(auditAction("resource.retire")).toBe("停用資源（resource.retire）");
+    expect(auditAction("resource.reactivate")).toBe("重新啟用資源（resource.reactivate）");
     expect(auditAction("future.action")).toBe("future.action");
     expect(auditAction("constructor")).toBe("constructor");
   });

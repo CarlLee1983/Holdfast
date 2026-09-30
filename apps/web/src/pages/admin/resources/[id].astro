@@ -23,6 +23,7 @@ const jwt = readAccessJwt(Astro.request, env, import.meta.env.DEV);
 const resourceId = Number(Astro.params.id);
 
 let resourceFailure: Failure | undefined;
+let retirementFailure: Failure | undefined;
 let slotFailure: Failure | undefined;
 let rowFailure: Failure | undefined;
 let submitted: Record<string, string> = {};
@@ -37,6 +38,14 @@ if (Astro.request.method === "POST") {
     const result = await env.APP.updateResource(jwt, resourceFormToInput(form, resourceId));
     if (result.ok) return Astro.redirect(`/admin/resources/${resourceId}?saved=updated`, 303);
     if (result.reason !== "unauthorized") resourceFailure = describeFailure(result);
+  } else if (intent === "retire-resource") {
+    const result = await env.APP.retireResource(jwt, resourceId);
+    if (result.ok) return Astro.redirect(`/admin/resources/${resourceId}?saved=retired`, 303);
+    if (result.reason !== "unauthorized") retirementFailure = describeFailure(result);
+  } else if (intent === "reactivate-resource") {
+    const result = await env.APP.reactivateResource(jwt, resourceId);
+    if (result.ok) return Astro.redirect(`/admin/resources/${resourceId}?saved=reactivated`, 303);
+    if (result.reason !== "unauthorized") retirementFailure = describeFailure(result);
   } else if (intent === "create-slot") {
     const result = await env.APP.createSlot(jwt, slotFormToInput(form, resourceId));
     if (result.ok) return Astro.redirect(`/admin/resources/${resourceId}?saved=slot`, 303);
@@ -58,6 +67,8 @@ if (Astro.request.method === "POST") {
 
 const saved = Astro.url.searchParams.get("saved");
 if (saved === "updated") notice = "資源已更新";
+if (saved === "retired") notice = "資源已停用；既有保留與訂位仍然有效";
+if (saved === "reactivated") notice = "資源已重新啟用";
 if (saved === "slot") notice = "時段已建立";
 if (saved === "capacity") notice = "容量已更新";
 if (saved === "time") notice = "時段時間已更新";
@@ -92,6 +103,26 @@ const slotErrors = slotFailure?.fields ?? {};
         <h2>修改資源</h2>
         <ResourceForm resourceId={resourceId} values={resourceValues ?? {}} failure={resourceFailure} submitLabel="儲存" />
         <p>修改保留期限只影響之後建立的保留。</p>
+
+        <h2>資源狀態</h2>
+        {retirementFailure && <p class="error" role="alert">{retirementFailure.message}</p>}
+        {resource.retiredAt === null ? (
+          <>
+            <p>目前有 {resource.futureBookingCount} 筆未來訂位。停用後這些訂位和既有保留仍然有效，請視需要自行聯絡會員。</p>
+            <form method="post">
+              <input type="hidden" name="intent" value="retire-resource" />
+              <button type="submit">停用資源</button>
+            </form>
+          </>
+        ) : (
+          <>
+            <p>已停用；既有保留與訂位仍然有效。</p>
+            <form method="post">
+              <input type="hidden" name="intent" value="reactivate-resource" />
+              <button type="submit">重新啟用資源</button>
+            </form>
+          </>
+        )}
 
         <h2>時段（台北時間）</h2>
         {slots?.ok && slots.data.length === 0 && <p>目前沒有時段。</p>}
@@ -165,27 +196,31 @@ const slotErrors = slotFailure?.fields ?? {};
         }
         <p>時段仍有保留或訂位紀錄（過期或已釋放的保留除外）時，不能修改時間。</p>
         <p>容量可調到低於已占用：既有的保留與訂位不受影響，但超占的時段不再接受新的保留。</p>
-        <h3>建立時段</h3>
-        <form method="post">
-          <input type="hidden" name="intent" value="create-slot" />
-          {slotFailure && <p class="error" role="alert">{slotFailure.message}</p>}
-          <label>
-            開始（台北時間）
-            <input type="datetime-local" name="startsAt" value={slotValues.startsAt ?? ""} required />
-            {slotErrors.startsAt?.map((m) => <span class="error">{m}</span>)}
-          </label>
-          <label>
-            結束（台北時間）
-            <input type="datetime-local" name="endsAt" value={slotValues.endsAt ?? ""} required />
-            {slotErrors.endsAt?.map((m) => <span class="error">{m}</span>)}
-          </label>
-          <label>
-            容量
-            <input name="capacity" inputmode="numeric" value={slotValues.capacity ?? ""} required />
-            {slotErrors.capacity?.map((m) => <span class="error">{m}</span>)}
-          </label>
-          <p><button type="submit">建立時段</button></p>
-        </form>
+        {resource.retiredAt === null ? (
+          <>
+            <h3>建立時段</h3>
+            <form method="post">
+              <input type="hidden" name="intent" value="create-slot" />
+              {slotFailure && <p class="error" role="alert">{slotFailure.message}</p>}
+              <label>
+                開始（台北時間）
+                <input type="datetime-local" name="startsAt" value={slotValues.startsAt ?? ""} required />
+                {slotErrors.startsAt?.map((m) => <span class="error">{m}</span>)}
+              </label>
+              <label>
+                結束（台北時間）
+                <input type="datetime-local" name="endsAt" value={slotValues.endsAt ?? ""} required />
+                {slotErrors.endsAt?.map((m) => <span class="error">{m}</span>)}
+              </label>
+              <label>
+                容量
+                <input name="capacity" inputmode="numeric" value={slotValues.capacity ?? ""} required />
+                {slotErrors.capacity?.map((m) => <span class="error">{m}</span>)}
+              </label>
+              <p><button type="submit">建立時段</button></p>
+            </form>
+          </>
+        ) : <p>資源已停用，無法建立新時段。</p>}
       </>
     )
   }
