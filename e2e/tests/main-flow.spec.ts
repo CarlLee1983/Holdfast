@@ -1,8 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { holdableSlot } from "../harness/slots";
+import { chooseOption, holdButton, slotButton, slotInfo } from "../harness/slots";
 import { memberSessionCookie } from "../harness/session-cookie";
 
-test("會員主流程：登入 → 看到時段 → 保留 → 確認 → 會員頁看到訂位 → 取消", async ({ page, context }) => {
+test("會員主流程：登入 → 選人數、日期與時段 → 保留 → 確認 → 會員頁看到訂位 → 取消", async ({ page, context }) => {
   await context.addCookies([memberSessionCookie()]);
 
   await page.goto("/me");
@@ -11,12 +11,16 @@ test("會員主流程：登入 → 看到時段 → 保留 → 確認 → 會員
   // 資源與時段來自 seed。「大廳用餐」的第一個時段是明天（UTC）03:00，離開始至少 3 小時，
   // 而取消截止是開始前 2 小時，所以後面的取消一定在截止前；改 seed 時要維持這個前提
   await page.goto("/");
-  // 時段依台北日期分組，每組有含星期的日期標題（例如「9/30（週三）」）
-  await expect(page.getByRole("heading", { level: 3, name: /^\d{1,2}\/\d{1,2}（週.）$/ }).first()).toBeVisible();
-  await expect(page.getByRole("article", { name: "包廂" }).first()).toBeVisible();
-  // 保留的時段見 harness/slots.ts
-  const lobby = holdableSlot(page, "main");
-  await lobby.getByRole("button", { name: "保留" }).click();
+  // 有 JS 時選單一變動就自動送出 GET，選擇存在網址裡；保留的時段見 harness/slots.ts
+  const { date } = slotInfo("main");
+  await chooseOption(page, "用餐人數", "3");
+  await chooseOption(page, "用餐日期", date);
+
+  // 還沒選時段：主按鈕不能按
+  await expect(page.getByRole("button", { name: "請選擇用餐時段" })).toBeDisabled();
+  await slotButton(page, "main").click();
+  await expect(slotButton(page, "main")).toHaveAttribute("aria-pressed", "true");
+  await holdButton(page).click();
 
   await expect(page).toHaveURL(/\/me\?held=\d+$/);
   await expect(page.getByRole("status")).toContainText("保留成功");
@@ -42,4 +46,21 @@ test("首頁訂位須知：列出各資源的說明與取消規則（seed）", a
   await expect(notes.getByText("可於用餐前 2 小時前自行取消")).toBeVisible();
   await expect(notes.getByText("獨立空間，適合 6–10 位")).toBeVisible();
   await expect(notes.getByText("可於用餐前 24 小時前自行取消")).toBeVisible();
+});
+
+test("選人數與日期後，時段依條件出現或消失", async ({ page }) => {
+  // 訪客也能瀏覽；固定看明天的 seed 時段：大廳用餐 11:00 與 19:00、包廂 19:00
+  const { date } = slotInfo("main");
+  await page.goto("/");
+  await chooseOption(page, "用餐日期", date);
+  await expect(page.getByLabel("用餐人數")).toHaveValue("2");
+
+  await expect(page.getByRole("button", { name: "11:00 大廳用餐", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "19:00 包廂", exact: true })).toBeVisible();
+
+  // 6 位超過大廳用餐的單筆上限（4 位）：大廳的時段消失並說明原因，包廂仍在
+  await chooseOption(page, "用餐人數", "6");
+  await expect(page.getByRole("button", { name: /大廳用餐/ })).toHaveCount(0);
+  await expect(page.getByText("大廳用餐最多 4 位，這個人數不列出它的時段。")).toBeVisible();
+  await expect(page.getByRole("button", { name: "19:00 包廂", exact: true })).toBeVisible();
 });

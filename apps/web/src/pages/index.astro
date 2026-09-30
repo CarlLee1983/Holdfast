@@ -2,13 +2,22 @@
 import MemberLayout from "../layouts/MemberLayout.astro";
 import { env } from "cloudflare:workers";
 import { loadCatalog } from "../catalog/load-catalog";
-import { flattenCatalog, groupSlotsByTaipeiDate } from "../catalog/group-slots-by-date";
-import { slotAvailability } from "../catalog/slot-status";
-import { formatTaipeiTime } from "../catalog/taipei-time";
-import { loginUrl } from "../auth/member";
+import { flattenCatalog } from "../catalog/flatten-catalog";
+import { formatTaipeiTime, taipeiDateKey } from "../catalog/taipei-time";
 import { handleHoldPost } from "../holds/submit";
 import { cancellationRuleText } from "../holds/cancellation";
 import { MERCHANT } from "../merchant/merchant";
+import { buildDateOptions } from "../picker/date-options";
+import { pickerAvailability, selectedSlot, slotsOnDate } from "../picker/list-slots";
+import { groupByMeal } from "../picker/meal-groups";
+import { parseDate, parseSeats } from "../picker/params";
+import {
+  filterSlotsBySeats,
+  hiddenResources,
+  hiddenResourcesNote,
+  maxSeatsPerHold,
+  onlineLimitNote,
+} from "../picker/seat-filter";
 
 export const prerender = false;
 
@@ -25,9 +34,24 @@ if (Astro.request.method === "POST") {
 const catalog = await loadCatalog(env.APP);
 const now = Date.now();
 
-// 各資源的時段攤平後依台北日期分組
-const STATUS_LABEL = { started: "已開始／不可預訂", full: "已額滿", open: "尚未開始" } as const;
-const dateGroups = groupSlotsByTaipeiDate(flattenCatalog(catalog));
+// 選擇存在 GET 參數；POST 失敗重新渲染時網址仍帶著同一組 query，選擇因此還在
+const query = Astro.url.searchParams;
+const resources = catalog.map(({ resource }) => resource);
+const allSlots = flattenCatalog(catalog);
+const maxSeats = maxSeatsPerHold(resources);
+const dateOptions = buildDateOptions({
+  now,
+  days: MERCHANT.bookableDays,
+  closedWeekdays: MERCHANT.closedWeekdays,
+  slotStarts: allSlots.map((slot) => slot.startsAt),
+});
+const seats = parseSeats(query.get("seats"), maxSeats);
+const date = parseDate(query.get("date"), dateOptions, taipeiDateKey(now));
+const listed = filterSlotsBySeats(slotsOnDate(allSlots, date, now), seats);
+const mealGroups = groupByMeal(listed, MERCHANT.lunchEndsAt);
+const chosen = selectedSlot(listed, query.get("slot"), seats, now);
+const seatsNote = hiddenResourcesNote(hiddenResources(resources, seats));
+const dateHeading = dateOptions.find((option) => option.value === date)?.heading ?? date;
 ---
 
 <MemberLayout title="線上訂位" cover>
@@ -47,73 +71,159 @@ const dateGroups = groupSlotsByTaipeiDate(flattenCatalog(catalog));
     </dl>
   </section>
 
-  <h2 id="booking-title">線上訂位</h2>
-  {holdError && <p role="alert">{holdError}</p>}
-  <p class="meta">時間皆為台北時間。</p>
-  {dateGroups.length === 0 && <p class="empty">目前沒有尚未結束的時段。</p>}
-  {
-    dateGroups.map((group) => (
-      <section class="list-section" aria-labelledby={`day-${group.date}`}>
-        <h3 class="eyebrow" id={`day-${group.date}`}>{group.heading}</h3>
-        <ul class="rule-list">
-          {group.slots.map((slot) => {
-            // 伺服器把超占的剩餘名額以 0 回傳，不會是負數；這裡只是 UI 提示，是否額滿仍由 App Worker 判定
-            const availability = slotAvailability(slot.startsAt, slot.remainingSeats, now);
-            return (
-              <li>
-                <article class="rule-item" aria-labelledby={`slot-${slot.id}-title slot-${slot.id}-time`}>
-                  <div class="rule-head">
-                    <p class="slot-time numeric" id={`slot-${slot.id}-time`}>
-                      {formatTaipeiTime(slot.startsAt)}–{formatTaipeiTime(slot.endsAt)}
-                    </p>
-                    <span class:list={["tag", { "tag--quiet": availability !== "open" }]}>
-                      {STATUS_LABEL[availability]}
-                    </span>
-                  </div>
-                  <h4 class="rule-title" id={`slot-${slot.id}-title`}>{slot.resourceName}</h4>
-                  <p class="meta">
-                    剩餘名額 <span class="numeric">{slot.remainingSeats} / {slot.capacity}</span>
+  <div class="booking">
+    <h2 id="booking-title">線上訂位</h2>
+    {holdError && <p role="alert">{holdError}</p>}
+
+    <form method="get" id="picker" class="picker" aria-labelledby="booking-title">
+      <div class="field">
+        <label for="seats">用餐人數</label>
+        <div class="select">
+          <select id="seats" name="seats">
+            {
+              Array.from({ length: maxSeats }, (_, i) => i + 1).map((n) => (
+                <option value={n} selected={n === seats}>
+                  {n} 位
+                </option>
+              ))
+            }
+          </select>
+        </div>
+        {maxSeats > 0 && <p class="hint">{onlineLimitNote(maxSeats, MERCHANT.phone)}</p>}
+        {seatsNote && <p class="hint">{seatsNote}</p>}
+      </div>
+
+      <div class="field">
+        <label for="date">用餐日期</label>
+        <div class="select">
+          <select id="date" name="date">
+            {
+              dateOptions.map((option) => (
+                <option value={option.value} selected={option.value === date} disabled={option.disabled}>
+                  {option.label}
+                </option>
+              ))
+            }
+          </select>
+        </div>
+      </div>
+
+      <!-- 沒有 JS 時靠這顆按鈕送出 GET；有 JS 時選單變動就自動送出，不需要它 -->
+      <noscript>
+        <button type="submit" class="secondary">更新</button>
+      </noscript>
+
+      <div class="field">
+        <span class="label" id="slots-label">用餐時段</span>
+        <div class="slots" role="group" aria-labelledby="slots-label">
+          {
+            mealGroups.length === 0 ? (
+              <p class="empty">這天沒有可訂的時段，請換一天。</p>
+            ) : (
+              mealGroups.map((group) => (
+                <div class="meal" role="group" aria-labelledby={`meal-${group.meal}`}>
+                  <p class="meal-head" id={`meal-${group.meal}`}>
+                    {group.label}
                   </p>
-                  {availability !== "open" ? null : member ? (
-                    <form method="post" class="hold-form">
-                      <input type="hidden" name="slotId" value={slot.id} />
-                      <input type="hidden" name="idempotencyKey" value={crypto.randomUUID()} />
-                      <label>
-                        名額
-                        <input type="number" name="seats" min="1" max={slot.seatsPerHold} value="1" required />
-                      </label>
-                      <button type="submit">保留</button>
-                    </form>
-                  ) : (
-                    <p>
-                      <a href={loginUrl(Astro.url)}>登入後保留</a>
-                    </p>
-                  )}
-                </article>
+                  <div class="times">
+                    {group.slots.map((slot) => {
+                      // 伺服器把超占的剩餘名額以 0 回傳，不會是負數；這裡只是 UI 提示，是否額滿仍由 App Worker 判定
+                      const availability = pickerAvailability(slot, seats, now);
+                      const note =
+                        availability === "full"
+                          ? `${slot.resourceName}・已額滿`
+                          : availability === "short"
+                            ? `${slot.resourceName}・剩 ${slot.remainingSeats} 位`
+                            : slot.resourceName;
+                      return (
+                        <button
+                          type="submit"
+                          class="time"
+                          name="slot"
+                          value={slot.id}
+                          aria-pressed={slot.id === chosen?.id ? "true" : "false"}
+                          disabled={availability !== "open"}
+                        >
+                          <span class="numeric">{formatTaipeiTime(slot.startsAt)}</span>{" "}
+                          <small>{note}</small>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))
+            )
+          }
+        </div>
+        <p class="hint">時間皆為台北時間。</p>
+      </div>
+    </form>
+
+    {
+      catalog.length > 0 && (
+        <section class="list-section" aria-labelledby="notes-heading">
+          <h2 id="notes-heading">訂位須知</h2>
+          <ul class="rule-list">
+            {catalog.map(({ resource }) => (
+              <li class="rule-item">
+                <h3 class="rule-title">{resource.name}</h3>
+                {resource.description && <p>{resource.description}</p>}
+                <p class="meta">{cancellationRuleText(resource.cancellationCutoffSeconds)}</p>
               </li>
-            );
-          })}
-        </ul>
-      </section>
-    ))
-  }
-  {
-    catalog.length > 0 && (
-      <section class="list-section" aria-labelledby="notes-heading">
-        <h2 id="notes-heading">訂位須知</h2>
-        <ul class="rule-list">
-          {catalog.map(({ resource }) => (
-            <li class="rule-item">
-              <h3 class="rule-title">{resource.name}</h3>
-              {resource.description && <p>{resource.description}</p>}
-              <p class="meta">{cancellationRuleText(resource.cancellationCutoffSeconds)}</p>
-            </li>
-          ))}
-        </ul>
-      </section>
-    )
-  }
+            ))}
+          </ul>
+        </section>
+      )
+    }
+  </div>
+
+  <!-- 底部固定摘要列。POST 不指定 action，錯誤重新渲染時網址仍帶著目前的選擇 -->
+  <div class="bar" role="group" aria-label="目前的選擇">
+    <p class="crumbs">
+      {
+        maxSeats > 0 && (
+          <>
+            <span>{seats} 位</span>
+            <i aria-hidden="true">›</i>
+          </>
+        )
+      }
+      <span>{dateHeading}</span><i aria-hidden="true">›</i>
+      {
+        chosen ? (
+          <span class="numeric">
+            {formatTaipeiTime(chosen.startsAt)} {chosen.resourceName}
+          </span>
+        ) : (
+          <span class="pending">時段</span>
+        )
+      }
+    </p>
+    <form method="post">
+      {
+        chosen && (
+          <>
+            <input type="hidden" name="slotId" value={chosen.id} />
+            <input type="hidden" name="seats" value={seats} />
+            <input type="hidden" name="idempotencyKey" value={crypto.randomUUID()} />
+          </>
+        )
+      }
+      <button type="submit" class="cta" disabled={!chosen}>
+        {chosen ? "保留這個時段" : "請選擇用餐時段"}
+      </button>
+    </form>
+  </div>
 </MemberLayout>
+
+<script>
+  // 選單變動就自動送出 GET（漸進增強）。沒有 JS 時由 <noscript> 裡的「更新」按鈕送出。
+  // requestSubmit() 沒有 submitter，所以不會帶 slot：換人數或日期後要重新選時段
+  const picker = document.querySelector<HTMLFormElement>("#picker");
+  picker?.addEventListener("change", (event) => {
+    if (event.target instanceof HTMLSelectElement) picker.requestSubmit();
+  });
+</script>
 
 <style>
   /* 店家面板：墨綠大色塊，置中店名、靠左內文 */
@@ -156,34 +266,200 @@ const dateGroups = groupSlotsByTaipeiDate(flattenCatalog(catalog));
     margin: 0;
   }
 
-  .slot-time {
-    font-size: var(--text-md);
-    font-weight: 500;
+  /* ---------- 訂位區 ---------- */
+  .booking {
+    display: grid;
+    gap: var(--space-xl);
   }
-  .hold-form {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: var(--space-sm);
-    margin-top: var(--space-xs);
+  .picker {
+    display: grid;
+    gap: var(--space-xl);
   }
-  .hold-form label {
-    display: flex;
-    align-items: center;
+  .field {
+    display: grid;
     gap: var(--space-xs);
   }
-  .hold-form input[type="number"] {
-    width: 5rem;
+  .field label,
+  .field .label {
+    font-size: var(--text-sm);
+    font-weight: 500;
+  }
+  .select {
+    position: relative;
+  }
+  .select select {
+    appearance: none;
+    width: 100%;
+    min-height: var(--control-height-lg);
+    padding: 0 var(--space-xl) 0 var(--space-md);
+    background: var(--color-paper);
+    color: var(--color-ink);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius);
+    font: inherit;
+  }
+  .select select:hover {
+    border-color: var(--color-muted);
+  }
+  .select::after {
+    content: "";
+    position: absolute;
+    inset-inline-end: var(--space-md);
+    top: 50%;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-inline-end: 1.5px solid var(--color-muted);
+    border-block-end: 1.5px solid var(--color-muted);
+    transform: translateY(-70%) rotate(45deg);
+    pointer-events: none;
+  }
+  .hint {
+    font-size: var(--text-xs);
+    color: var(--color-muted);
+  }
+  .slots {
+    display: grid;
+    gap: var(--space-lg);
+  }
+  .meal {
+    display: grid;
+    gap: var(--space-sm);
+  }
+  .meal-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    font-size: var(--text-xs);
+    color: var(--color-muted);
+    letter-spacing: 0.12em;
+  }
+  .meal-head::after {
+    content: "";
+    flex: 1;
+    border-top: 1px solid var(--color-rule);
+  }
+  .times {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-xs);
+  }
+
+  /* 時段按鈕：覆寫全域 button 的實心樣式；選中時才填墨綠，已額滿用虛線框 */
+  .time {
+    display: grid;
+    justify-items: center;
+    padding: var(--space-sm) var(--space-2xs);
+    background: transparent;
+    border-color: var(--color-rule);
+    color: var(--color-ink);
+    letter-spacing: 0.02em;
+  }
+  .time .numeric {
+    font-size: var(--text-md);
+    font-weight: 500;
+    line-height: 1.3;
+  }
+  .time small {
+    font-size: var(--text-xs);
+    color: var(--color-muted);
+  }
+  .time:hover:not(:disabled) {
+    background: transparent;
+    border-color: var(--color-ink);
+  }
+  .time[aria-pressed="true"],
+  .time[aria-pressed="true"]:hover:not(:disabled) {
+    background: var(--color-brand);
+    border-color: var(--color-brand);
+    color: var(--color-on-brand);
+  }
+  .time[aria-pressed="true"] small {
+    color: var(--color-on-brand-muted);
+  }
+  .time:disabled {
+    background: transparent;
+    border-color: var(--color-rule);
+    border-style: dashed;
+    color: var(--color-muted);
+  }
+  .time:disabled .numeric {
+    text-decoration: line-through;
+    text-decoration-thickness: 1px;
+  }
+
+  /* ---------- 底部固定摘要列 ---------- */
+  :global(.shell--cover) {
+    --bar-h: 8.5rem;
+  }
+  /* 頁尾讓出摘要列的高度，才不會被蓋住 */
+  :global(.shell--cover .foot) {
+    padding-block-end: calc(var(--bar-h) + var(--space-lg));
+  }
+  .bar {
+    position: fixed;
+    inset-inline: 0;
+    inset-block-end: 0;
+    z-index: var(--z-masthead);
+    display: grid;
+    gap: var(--space-sm);
+    padding: var(--space-sm) var(--gutter) calc(var(--space-md) + env(safe-area-inset-bottom, 0px));
+    background: var(--color-paper);
+    border-top: 1px solid var(--color-rule);
+  }
+  /* 右欄只有半個視窗寬：crumbs 可以換行，才不會蓋到旁邊的主按鈕 */
+  .crumbs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-xs);
+    min-width: 0;
+    font-size: var(--text-sm);
+  }
+  .crumbs span {
+    padding: var(--space-2xs) var(--space-sm);
+    background: var(--color-paper-2);
+    border-radius: var(--radius);
+    white-space: nowrap;
+  }
+  .crumbs span.pending {
+    background: transparent;
+    border: 1px dashed var(--color-rule);
+    color: var(--color-muted);
+  }
+  .crumbs i {
+    font-style: normal;
+    color: var(--color-muted);
+  }
+  .cta {
+    width: 100%;
+    min-height: var(--control-height-lg);
+    font-size: var(--text-base);
+    font-weight: 700;
   }
 
   @media (min-width: 40rem) {
+    :global(.shell--cover) {
+      --bar-h: 5.5rem;
+    }
     .panel {
       padding-inline: var(--space-2xl);
+    }
+    .bar {
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+    }
+    .cta {
+      width: auto;
+      padding-inline: var(--space-xl);
     }
   }
   @media (min-width: 64rem) {
     .panel {
       padding-block: var(--space-3xl) var(--space-2xl);
+    }
+    /* 摘要列只跨右欄，照片那一半不被蓋住 */
+    .bar {
+      inset-inline-start: 50%;
     }
   }
 </style>
