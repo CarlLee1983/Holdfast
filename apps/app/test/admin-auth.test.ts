@@ -19,6 +19,7 @@ async function adminCalls(jwt: string) {
     createResource: () => app.createResource(jwt, resource),
     updateResource: () => app.updateResource(jwt, { id: resourceId, holdTtlSeconds: 600, ...resource }),
     listResourcesForAdmin: () => app.listResourcesForAdmin(jwt),
+    listAuditForAdmin: () => app.listAuditForAdmin(jwt, {}),
     getResourceForAdmin: () => app.getResourceForAdmin(jwt, resourceId),
     createSlot: () =>
       app.createSlot(jwt, { resourceId, startsAt: NOW + 1000, endsAt: NOW + 2000, capacity: 5 }),

@@ -3,6 +3,29 @@ import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { slots } from "../catalog/schema";
 import { occupiedSeats } from "../holds/occupancy";
 
+export interface AdminAuditRecord {
+  id: number;
+  actorEmail: string;
+  action: string;
+  targetType: string;
+  targetId: number;
+  at: number;
+  detail: string;
+}
+
+/** 額外讀一筆，只用來判斷是否還有下一頁。 */
+export async function selectAdminAudit(d1: D1Database, cursor?: number): Promise<{ rows: AdminAuditRecord[]; nextCursor: number | null }> {
+  const statement = d1.prepare(
+    `SELECT id, actor_email AS actorEmail, action, target_type AS targetType,
+            target_id AS targetId, at, detail FROM admin_audit
+     ${cursor === undefined ? "" : "WHERE id < ?"}
+     ORDER BY id DESC LIMIT 51`,
+  );
+  const { results } = await (cursor === undefined ? statement : statement.bind(cursor)).all<AdminAuditRecord>();
+  const rows = results.slice(0, 50);
+  return { rows, nextCursor: results.length > 50 ? rows[49]!.id : null };
+}
+
 export interface AdminSlot {
   id: number;
   startsAt: number;

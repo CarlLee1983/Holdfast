@@ -1,0 +1,55 @@
+---
+import { env } from "cloudflare:workers";
+import { readAccessJwt } from "../../admin/access-jwt";
+import { auditAction, auditCursor, auditDetail } from "../../admin/audit";
+import { formatTaipeiDateTime } from "../../catalog/taipei-time";
+import AccessDenied from "../../components/AccessDenied.astro";
+import AdminLayout from "../../layouts/AdminLayout.astro";
+
+export const prerender = false;
+
+const jwt = readAccessJwt(Astro.request, env, import.meta.env.DEV);
+const cursor = auditCursor(Astro.url.searchParams.get("cursor"));
+const result = await env.APP.listAuditForAdmin(jwt, cursor === undefined ? {} : { cursor });
+const unauthorized = !result.ok && result.reason === "unauthorized";
+const invalidCursor = !result.ok && result.reason === "invalid_input";
+if (unauthorized) Astro.response.status = 403;
+else if (invalidCursor) Astro.response.status = 400;
+const records = result.ok ? result.data.rows : [];
+const nextCursor = result.ok ? result.data.nextCursor : null;
+---
+
+<AdminLayout title="稽核紀錄">
+  {unauthorized ? (
+    <AccessDenied />
+  ) : invalidCursor ? (
+    <p class="error" role="alert">無效的稽核紀錄游標。<a href="/admin/audit">回到最新紀錄</a></p>
+  ) : (
+    <>
+      {cursor !== undefined && <p><a href="/admin/audit">回到最新紀錄</a></p>}
+      {records.length === 0 ? <p>目前沒有稽核紀錄。</p> : (
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>操作者</th><th>動作</th><th>對象</th><th>時間（台北）</th><th>詳細內容</th></tr></thead>
+            <tbody>
+              {records.map((record) => {
+                const detail = auditDetail(record.detail);
+                return <tr>
+                  <td>{record.actorEmail}</td>
+                  <td>{auditAction(record.action)}</td>
+                  <td>{record.targetType} #{record.targetId}</td>
+                  <td><time datetime={new Date(record.at).toISOString()}>{formatTaipeiDateTime(record.at)}</time></td>
+                  <td>
+                    <pre class="audit-detail">{detail.display}</pre>
+                    {detail.raw !== null && <details class="audit-detail"><summary>原始內容</summary><pre>{detail.raw}</pre></details>}
+                  </td>
+                </tr>;
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {nextCursor !== null && <p><a href={`/admin/audit?cursor=${nextCursor}`}>下一頁</a></p>}
+    </>
+  )}
+</AdminLayout>

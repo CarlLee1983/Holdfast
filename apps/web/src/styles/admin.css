@@ -167,3 +167,20 @@ td form input {
 td a {
   margin-inline-end: var(--space-xs);
 }
+
+/* 稽核 detail 可含長字串；限制在表格捲動區內，保留換行和完整內容。 */
+.audit-detail {
+  margin: 0;
+  max-width: min(32rem, 65vw);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.audit-detail summary {
+  cursor: pointer;
+}
+.audit-detail pre {
+  margin: var(--space-2xs) 0;
+  font: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
