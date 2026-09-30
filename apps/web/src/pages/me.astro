@@ -4,8 +4,9 @@ import { env } from "cloudflare:workers";
 import { loginUrl } from "../auth/member";
 import { CANCEL_INTENT } from "../holds/cancel";
 import { handleMePost } from "../holds/me-post";
-import { formatTaipeiDate, formatTaipeiTime } from "../catalog/taipei-time";
+import { formatTaipeiDate, formatTaipeiDateTime, formatTaipeiTime } from "../catalog/taipei-time";
 import { bookingCancellation } from "../holds/cancellation";
+import { parseRecordId } from "../holds/record-id";
 import { holdOrBookingStatus } from "../shared/booking-status";
 
 export const prerender = false;
@@ -30,23 +31,20 @@ const bookingsResult = await env.APP.listMyBookings(member.memberId);
 if (!bookingsResult.ok) throw new Error(`listMyBookings 失敗：${bookingsResult.reason}`);
 const bookings = bookingsResult.data;
 
-const confirmedId = Astro.url.searchParams.get("confirmed");
-// 已取消的訂位不在列表裡，無法像 confirmed 那樣對照列表驗證，所以只檢查格式；訊息本身不含任何資料
-const cancelledId = Astro.url.searchParams.get("cancelled");
+// 只檢查格式，不對照列表；訊息本身不含任何資料
+const cancelledId = parseRecordId(Astro.url.searchParams.get("cancelled") ?? undefined);
 const now = Date.now();
 
 // 訂位狀態對應的標籤樣式；領域 status 不直接當 CSS class
 const TAG_VARIANT = { confirmed: "tag--solid", cancelled: "tag--quiet" } as const;
 
-const formatDateTime = (epochMs: number) => `${formatTaipeiDate(epochMs)} ${formatTaipeiTime(epochMs)}`;
 ---
 
 <MemberLayout title="我的保留與訂位">
   <h1>我的保留與訂位</h1>
   <p class="meta"><a href="/">回到時段列表</a>　時間皆為台北時間。</p>
   {formError && <p role="alert">{formError}</p>}
-  {confirmedId !== null && bookings.some((b) => String(b.id) === confirmedId && b.status === "confirmed") && <p role="status">訂位成功</p>}
-  {cancelledId !== null && /^\d+$/.test(cancelledId) && <p role="status">已取消訂位</p>}
+  {cancelledId !== null && <p role="status">已取消訂位</p>}
   <section class="list-section" aria-labelledby="holds-heading">
     <h2 id="holds-heading" class="eyebrow">我的保留</h2>
     {
@@ -73,7 +71,7 @@ const formatDateTime = (epochMs: number) => `${formatTaipeiDate(epochMs)} ${form
                   </p>
                   <p class="meta">{hold.seats} 位</p>
                   <p class="meta hold-expiry">
-                    請於 <time datetime={new Date(hold.expiresAt).toISOString()}>{formatDateTime(hold.expiresAt)}</time> 前確認
+                    請於 <time datetime={new Date(hold.expiresAt).toISOString()}>{formatTaipeiDateTime(hold.expiresAt)}</time> 前確認
                   </p>
                   {/* 預設隱藏，由用戶端 script 顯示；沒有 JS 時只剩上面的絕對到期時間 */}
                   <p class="meta hold-countdown" hidden>
@@ -114,7 +112,7 @@ const formatDateTime = (epochMs: number) => `${formatTaipeiDate(epochMs)} ${form
                     </span>
                   </p>
                   <p class="meta">{booking.seats} 位</p>
-                  <p class="meta">取消截止時間 {formatDateTime(booking.cancellableUntil)}</p>
+                  <p class="meta">取消截止時間 {formatTaipeiDateTime(booking.cancellableUntil)}</p>
                   {cancellation === "cancellable" && (
                     <form method="post">
                       <input type="hidden" name="intent" value={CANCEL_INTENT} />

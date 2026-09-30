@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { holdPageState, parseHoldId, reselectUrl } from "./hold-page";
+import { holdPageState, reselectUrl } from "./hold-page";
 
 const holds = [
   { id: 7, slotId: 1, seats: 2, startsAt: Date.UTC(2026, 9, 1, 3) },
@@ -34,17 +34,6 @@ describe("holdPageState", () => {
 
   it("catalog 找不到所屬時段：unavailable", () => {
     expect(holdPageState(holds, "7", [catalog[1]])).toEqual({ kind: "unavailable" });
-  });
-});
-
-describe("parseHoldId", () => {
-  it("正整數的標準寫法轉成數字", () => {
-    expect(parseHoldId("7")).toBe(7);
-    expect(parseHoldId("12345")).toBe(12345);
-  });
-
-  it.each(["", "abc", "0", "-7", "07", "7.0", "7 ", "+7", "9007199254740993", undefined])("非法（%j）：null", (raw) => {
-    expect(parseHoldId(raw)).toBeNull();
   });
 });
 

@@ -26,6 +26,11 @@ export function formatTaipeiTime(epochMs: number): string {
   return timeFormat.format(epochMs);
 }
 
+/** 日期加時間，例如「2026/09/30（週三） 19:00」。 */
+export function formatTaipeiDateTime(epochMs: number): string {
+  return `${formatTaipeiDate(epochMs)} ${formatTaipeiTime(epochMs)}`;
+}
+
 const dayHeadingFormat = new Intl.DateTimeFormat("zh-TW", {
   timeZone: "Asia/Taipei",
   month: "numeric",

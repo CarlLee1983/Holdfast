@@ -21,7 +21,7 @@ export function handleCancelPost({ member, form, app, url }: CancelPostContext):
     id: toNumber(form.get("bookingId")),
     url,
     field: "bookingId",
-    successParam: "cancelled",
+    successUrl: (id) => `/me?cancelled=${id}`,
     call: (memberId, input) => app.cancelBooking(memberId, input),
     describe: describeCancelFailure,
   });

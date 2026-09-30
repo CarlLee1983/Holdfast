@@ -24,6 +24,10 @@ const SLOT_ROLES = {
   "countdown-list": { resource: "包廂", dayOffset: 1, utcHour: 11 },
   "double-submit-confirm": { resource: "包廂", dayOffset: 1, utcHour: 11 },
   "no-js": { resource: "包廂", dayOffset: 2, utcHour: 2 },
+  // 確認頁／完成頁「別人的保留與訂位」測試的擁有者（HOLD_OWNER_MEMBER）專用。該會員的「別人的保留」測試已用 main 留下一筆有效保留，
+  // 而同一會員同一時段只能有一筆有效的保留或訂位，所以這兩個角色各用一個不同於 main 的時段；測試會確認它們，確認後不佔有效保留的額度
+  "booking-owner": { resource: "包廂", dayOffset: 1, utcHour: 11 },
+  "booking-owner-redirect": { resource: "大廳用餐", dayOffset: 2, utcHour: 11 },
   // 專供「送出會被伺服器拒絕」的測試：該會員從不在這個時段建立保留，才不會先撞到 already_in_slot
   "double-submit-rejected": { resource: "大廳用餐", dayOffset: 2, utcHour: 11 },
 } as const;
