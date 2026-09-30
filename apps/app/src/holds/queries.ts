@@ -42,7 +42,12 @@ export interface SlotSummary {
   endsAt: number;
 }
 
-export interface MyHold extends HoldRecord, SlotSummary {}
+/** 確認頁使用會員自己的保留資料，不依賴會隱藏停用資源的公開 catalog。 */
+export interface MyHold extends HoldRecord, SlotSummary {
+  resourceDescription: string | null;
+  holdTtlSeconds: number;
+  cancellationCutoffSeconds: number;
+}
 
 export interface MyBooking extends BookingRecord, SlotSummary {
   status: typeof CONFIRMED | typeof CANCELLED;
@@ -158,6 +163,9 @@ export async function selectActiveHolds(
     .select({
       ...holdColumns,
       resourceName: resources.name,
+      resourceDescription: resources.description,
+      holdTtlSeconds: resources.holdTtlSeconds,
+      cancellationCutoffSeconds: resources.cancellationCutoffSeconds,
       startsAt: slots.startsAt,
       endsAt: slots.endsAt,
     })

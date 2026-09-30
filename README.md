@@ -144,7 +144,7 @@ bun run deploy:app:<env>
 bun run deploy:web:<env>   # 以 CLOUDFLARE_ENV=<env> 建置後部署
 ```
 
-資源停用的 migration 只新增 nullable `retired_at`，舊版 App 可繼續讀寫。啟用停用功能後若要回滾 App，須保留停用守衛：舊版 App 忽略此欄位，會重新公開已停用資源並接受新保留。回滾 Web 不影響 App 的守衛。
+資源停用的 migration 只新增 nullable `retired_at`，舊版 App 可繼續讀寫。啟用停用功能後若要回滾 App，須保留停用守衛：舊版 App 忽略此欄位，會重新公開已停用資源並接受新保留。回滾 Web 不影響 App 的守衛。確認頁改用會員自己的保留資料（含資源說明與規則），不依賴公開 catalog；App 必須先部署以提供新增欄位，回滾時先退 Web 再退 App。
 
 部署順序（App 先、Web 後）與 migration 的相容規則見 [ADR 0005](docs/adr/0005-web-app-split-via-rpc.md) 與 [ADR 0010](docs/adr/0010-migrations-compatible-with-both-app-versions.md)。
 
