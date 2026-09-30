@@ -32,6 +32,15 @@ export function slotCapacityFormToInput(form: FormLike) {
   return { slotId: toNumber(form.get("slotId")), capacity: toNumber(form.get("capacity")) };
 }
 
+/** 修改時段時間表單 → RPC 輸入；時間欄位是台北時間，轉成 UTC epoch 毫秒。 */
+export function slotTimeFormToInput(form: FormLike) {
+  return {
+    slotId: toNumber(form.get("slotId")),
+    startsAt: parseTaipeiDateTime(form.get("startsAt")) ?? Number.NaN,
+    endsAt: parseTaipeiDateTime(form.get("endsAt")) ?? Number.NaN,
+  };
+}
+
 /** 刪除時段表單 → RPC 輸入。 */
 export function slotIdFormToInput(form: FormLike) {
   return { slotId: toNumber(form.get("slotId")) };

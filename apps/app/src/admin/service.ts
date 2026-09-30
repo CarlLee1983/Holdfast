@@ -18,6 +18,7 @@ import {
   listSlotHoldsAndBookingsInput,
   updateResourceInput,
   updateSlotCapacityInput,
+  updateSlotTimeInput,
 } from "./input";
 import { selectAdminSlots, slotExists, type AdminSlot } from "./queries";
 
@@ -129,6 +130,14 @@ export function createAdminService(d1: D1Database, clock: Clock, accessConfig: A
    */
   const slotHasOnlyDiscardableHolds = (slotId: number) =>
     sql`NOT EXISTS (SELECT 1 FROM ${holds} WHERE ${holds.slotId} = ${slotId} AND NOT ${discardableHold(effectiveNow)})`;
+
+  /** 同資源沒有其他時段與 [startsAt, endsAt) 相交（排除自己）；相交規則同 createSlot，相鄰不算。 */
+  const noOverlap = (slotId: number, startsAt: number, endsAt: number) =>
+    sql`NOT EXISTS (
+      SELECT 1 FROM slots o
+      WHERE o.resource_id = (SELECT resource_id FROM slots WHERE id = ${slotId})
+        AND o.id != ${slotId} AND o.starts_at < ${endsAt} AND o.ends_at > ${startsAt}
+    )`;
 
   /**
    * 調整容量的稽核 INSERT，必須放在 UPDATE 之前（同 auditResourceUpdateBeforeWrite）：
@@ -343,6 +352,49 @@ export function createAdminService(d1: D1Database, clock: Clock, accessConfig: A
           endsAt: row.ends_at,
           capacity,
         });
+      });
+    },
+
+    updateSlotTime(
+      jwt: unknown,
+      input: unknown,
+    ): Promise<AdminResult<SlotRecord, "slot_not_found" | "slot_in_use" | "slot_overlaps">> {
+      return authorized(jwt, updateSlotTimeInput, input, async (actor, { slotId, startsAt, endsAt }) => {
+        // 判定與更新在同一個 batch 內以條件寫入完成（ADR 0004），不先讀再寫：
+        // 「保留紀錄全都可丟棄」與刪除時段共用 slotHasOnlyDiscardableHolds（ADR 0012），
+        // 重疊檢查同 createSlot，但排除自己。稽核與 UPDATE 共用同一組條件，所以要嘛都生效、要嘛都不動。
+        // 順序固定（推進高水位由 batchAtEffectiveNow 放在最前）：稽核（讀舊時間）→ UPDATE。
+        // 可丟棄的保留紀錄不必處理：修改時間不影響外鍵，它們留在原時段。
+        const now = clock.now();
+        const guard = sql`${slotHasOnlyDiscardableHolds(slotId)} AND ${noOverlap(slotId, startsAt, endsAt)}`;
+        const [audit, update] = await batchAtEffectiveNow<{ detail: string; resourceId: number; capacity: number }>(d1, now, [
+          sql`
+            INSERT INTO admin_audit (${sql.raw(AUDIT_COLUMNS)})
+            SELECT ${actor.email}, 'slot.update_time', 'slot', id, ${now},
+              json_object(
+                'before', json_object('startsAt', starts_at, 'endsAt', ends_at),
+                'after', json_object('startsAt', ${startsAt}, 'endsAt', ${endsAt})
+              )
+            FROM slots WHERE id = ${slotId} AND ${guard}
+            RETURNING detail
+          `,
+          sql`
+            UPDATE slots SET starts_at = ${startsAt}, ends_at = ${endsAt}
+            WHERE id = ${slotId} AND ${guard}
+            RETURNING resource_id AS resourceId, capacity
+          `,
+        ]);
+        const row = update!.results[0];
+        if (!row) {
+          // 失敗之後才分辨原因（只用來選 reason，不影響是否寫入）；同時成立時「有人占用」優先
+          if (!(await slotExists(db, slotId))) return fail("slot_not_found");
+          const [inUse] = await batchAtEffectiveNow<{ inUse: number }>(d1, now, [
+            sql`SELECT NOT ${slotHasOnlyDiscardableHolds(slotId)} AS inUse`,
+          ]);
+          return fail(inUse!.results[0]!.inUse ? "slot_in_use" : "slot_overlaps");
+        }
+        logAudit(actor, "slot.update_time", "slot", slotId, JSON.parse(audit!.results[0]!.detail));
+        return ok({ id: slotId, resourceId: row.resourceId, startsAt, endsAt, capacity: row.capacity });
       });
     },
 

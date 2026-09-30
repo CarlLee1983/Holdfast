@@ -24,6 +24,7 @@ async function adminCalls(jwt: string) {
       app.createSlot(jwt, { resourceId, startsAt: NOW + 1000, endsAt: NOW + 2000, capacity: 5 }),
     listSlotsForAdmin: () => app.listSlotsForAdmin(jwt, resourceId),
     updateSlotCapacity: () => app.updateSlotCapacity(jwt, { slotId: 1, capacity: 5 }),
+    updateSlotTime: () => app.updateSlotTime(jwt, { slotId: 1, startsAt: NOW + 1000, endsAt: NOW + 2000 }),
     deleteSlot: () => app.deleteSlot(jwt, { slotId: 1 }),
   };
 }

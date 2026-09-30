@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseTaipeiDateTime } from "./taipei-input";
+import { formatTaipeiDateTimeInput, parseTaipeiDateTime } from "./taipei-input";
 
 describe("台北時間的 datetime-local 輸入轉 UTC epoch 毫秒", () => {
   it("台北 19:00 = UTC 11:00，同一天", () => {
@@ -37,5 +37,19 @@ describe("台北時間的 datetime-local 輸入轉 UTC epoch 毫秒", () => {
   it("非字串回傳 null", () => {
     expect(parseTaipeiDateTime(null)).toBeNull();
     expect(parseTaipeiDateTime(undefined)).toBeNull();
+  });
+});
+
+describe("UTC epoch 毫秒轉台北時間的 datetime-local 值", () => {
+  it("UTC 11:00 是台北 19:00", () => {
+    expect(formatTaipeiDateTimeInput(Date.UTC(2026, 8, 30, 11, 0))).toBe("2026-09-30T19:00");
+  });
+
+  it("跨日：UTC 16:30 是台北隔天 00:30", () => {
+    expect(formatTaipeiDateTimeInput(Date.UTC(2026, 8, 29, 16, 30))).toBe("2026-09-30T00:30");
+  });
+
+  it("與 parseTaipeiDateTime 互為反函數", () => {
+    expect(parseTaipeiDateTime(formatTaipeiDateTimeInput(Date.UTC(2030, 0, 1, 5, 45)))).toBe(Date.UTC(2030, 0, 1, 5, 45));
   });
 });

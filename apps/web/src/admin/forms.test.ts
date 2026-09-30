@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formToRecord, resourceFormToInput, slotCapacityFormToInput, slotFormToInput, slotIdFormToInput } from "./forms";
+import { formToRecord, resourceFormToInput, slotCapacityFormToInput, slotFormToInput, slotIdFormToInput, slotTimeFormToInput } from "./forms";
 
 const form = (entries: Record<string, string>) => new URLSearchParams(entries);
 
@@ -79,6 +79,22 @@ describe("時段容量與刪除表單轉 RPC 輸入", () => {
 
   it("刪除表單只帶時段編號", () => {
     expect(slotIdFormToInput(form({ slotId: "7", capacity: "12" }))).toEqual({ slotId: 7 });
+  });
+});
+
+describe("修改時段時間表單轉 RPC 輸入", () => {
+  it("台北時間轉成 UTC epoch 毫秒", () => {
+    expect(slotTimeFormToInput(form({ slotId: "7", startsAt: "2026-09-30T19:00", endsAt: "2026-09-30T20:30" }))).toEqual({
+      slotId: 7,
+      startsAt: Date.UTC(2026, 8, 30, 11, 0),
+      endsAt: Date.UTC(2026, 8, 30, 12, 30),
+    });
+  });
+
+  it("時間格式無效時轉成 NaN，由 App 回報欄位錯誤", () => {
+    const input = slotTimeFormToInput(form({ slotId: "7", startsAt: "", endsAt: "bad" }));
+    expect(input.startsAt).toBeNaN();
+    expect(input.endsAt).toBeNaN();
   });
 });
 

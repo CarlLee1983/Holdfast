@@ -27,3 +27,8 @@ export function parseTaipeiDateTime(value: unknown): number | null {
     check.getUTCSeconds() === second;
   return valid ? utc - TAIPEI_OFFSET_MS : null;
 }
+
+/** `parseTaipeiDateTime` 的反向：UTC epoch 毫秒轉成台北時間的 `YYYY-MM-DDTHH:mm`，用來預填 datetime-local。 */
+export function formatTaipeiDateTimeInput(epochMs: number): string {
+  return new Date(epochMs + TAIPEI_OFFSET_MS).toISOString().slice(0, 16);
+}

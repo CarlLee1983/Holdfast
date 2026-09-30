@@ -83,6 +83,14 @@ export const createSlotInput = z
 /** 調整容量：可調到低於已占用（形成超占，CONTEXT.md），所以只驗容量本身的範圍。 */
 export const updateSlotCapacityInput = z.object({ slotId, capacity });
 
+/** 修改時段時間：只驗時間本身；是否有人占用與是否重疊由 service 在寫入時判定。 */
+export const updateSlotTimeInput = z
+  .object({ slotId, startsAt: slotTime("開始時間"), endsAt: slotTime("結束時間") })
+  .refine((slot) => slot.startsAt < slot.endsAt, {
+    path: ["endsAt"],
+    error: "結束時間必須晚於開始時間",
+  });
+
 export const deleteSlotInput = z.object({ slotId });
 
 export const listSlotHoldsAndBookingsInput = z.object({ slotId });
@@ -95,6 +103,7 @@ export type CreateResourceInput = z.output<typeof createResourceInput>;
 export type UpdateResourceInput = z.output<typeof updateResourceInput>;
 export type CreateSlotInput = z.output<typeof createSlotInput>;
 export type UpdateSlotCapacityInput = z.output<typeof updateSlotCapacityInput>;
+export type UpdateSlotTimeInput = z.output<typeof updateSlotTimeInput>;
 export type DeleteSlotInput = z.output<typeof deleteSlotInput>;
 
 export const getResourceInput = resourceId;
