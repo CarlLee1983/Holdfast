@@ -91,6 +91,7 @@ export interface AgendaCancelledBooking extends AgendaBooking {
 export interface AgendaSlot extends AdminSlot {
   resourceId: number;
   resourceName: string;
+  resourceRetiredAt: number | null;
   bookings: AgendaBooking[];
   holds: AgendaHold[];
   cancelledBookings: AgendaCancelledBooking[];
@@ -116,6 +117,7 @@ export async function selectAgenda(
       id: slots.id,
       resourceId: slots.resourceId,
       resourceName: resources.name,
+      resourceRetiredAt: resources.retiredAt,
       startsAt: slots.startsAt,
       endsAt: slots.endsAt,
       capacity: slots.capacity,
@@ -182,4 +184,12 @@ export async function selectAgenda(
 export async function slotExists(db: DrizzleD1Database, slotId: number): Promise<boolean> {
   const rows = await db.select({ id: slots.id }).from(slots).where(eq(slots.id, slotId)).limit(1);
   return rows.length > 0;
+}
+
+/** 未來尚未取消的訂位筆數（不是名額數），供停用前提醒，不作阻擋條件。 */
+export async function selectFutureBookingCount(d1: D1Database, resourceId: number, now: number): Promise<number> {
+  const row = await d1.prepare(
+    "SELECT COUNT(*) AS n FROM holds h JOIN slots s ON s.id = h.slot_id WHERE s.resource_id = ? AND s.starts_at > ? AND h.status = ?",
+  ).bind(resourceId, now, CONFIRMED).first<{ n: number }>();
+  return row!.n;
 }

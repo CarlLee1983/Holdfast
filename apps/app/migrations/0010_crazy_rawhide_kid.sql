@@ -1,0 +1,1 @@
+ALTER TABLE `resources` ADD `retired_at` integer;

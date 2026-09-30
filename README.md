@@ -61,6 +61,7 @@ bun run e2e            # Playwright 主流程（首次先在 e2e/ 執行 bunx pl
 
 `/admin` 是日程表（單日、依台北時間切日，列出所有資源的時段與訂位、保留中、已取消名單，可依資源篩選，前後一天與日期選擇器都是一般 GET）；`/admin/resources`（資源列表、建立與修改資源、建立時段、查看時段內的保留與訂位、取消訂位（可填給會員看的原因，時段開始後不能取消；日程表也能直接取消）；時間以台北時間輸入與顯示；管理表單同樣有防重複送出）與唯讀的 `/admin/audit`（依 ID 新到舊，每頁 50 筆，cursor 翻頁）前面放 Cloudflare Access，理由與取捨見 [ADR 0007](docs/adr/0007-admin-behind-cloudflare-access.md)。會員可在 `/me` 看到被管理者取消的訂位與取消原因。
 Web Worker 只把請求裡的 `Cf-Access-Jwt-Assertion` 原樣轉交給 App Worker，授權完全由 App 的管理 RPC 自己驗簽決定（RS256、`aud`、`iss`、未過期，容許 30 秒時鐘誤差）。
+資源詳情可停用與重新啟用，停用前會顯示未來訂位筆數；資源列表與日程表保留已停用的標示。停用行為見 [ADR 0014](docs/adr/0014-resources-retire-not-delete.md)。重複停用或重新啟用回成功，但不重複寫稽核。
 每個成功的管理寫入都在同一個 D1 batch 內寫一列 `admin_audit`（操作者 email），並輸出一行結構化 log。
 
 **Fail closed**：App 的 `ACCESS_TEAM_DOMAIN` 或 `ACCESS_AUD` 為空、JWT 缺少或無效時，所有管理 RPC 一律回 `unauthorized`（`/admin` 顯示 403），沒有任何預設放行的路徑。
@@ -142,6 +143,8 @@ bun run db:migrate:<env>   # 對遠端 D1 套用 migration
 bun run deploy:app:<env>
 bun run deploy:web:<env>   # 以 CLOUDFLARE_ENV=<env> 建置後部署
 ```
+
+資源停用的 migration 只新增 nullable `retired_at`，舊版 App 可繼續讀寫。啟用停用功能後若要回滾 App，須保留停用守衛：舊版 App 忽略此欄位，會重新公開已停用資源並接受新保留。回滾 Web 不影響 App 的守衛。
 
 部署順序（App 先、Web 後）與 migration 的相容規則見 [ADR 0005](docs/adr/0005-web-app-split-via-rpc.md) 與 [ADR 0010](docs/adr/0010-migrations-compatible-with-both-app-versions.md)。
 

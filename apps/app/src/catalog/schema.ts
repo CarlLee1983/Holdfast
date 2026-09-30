@@ -14,6 +14,8 @@ export const resources = sqliteTable("resources", {
   cancellationCutoffSeconds: integer("cancellation_cutoff_seconds").notNull(),
   /** 給顧客看的純文字說明，選填，最多 200 字（在 App 端驗證）。 */
   description: text("description"),
+  /** 停用時間；null 表示啟用（ADR 0014）。 */
+  retiredAt: integer("retired_at"),
   createdAt: integer("created_at")
     .notNull()
     .default(sql`(unixepoch() * 1000)`),

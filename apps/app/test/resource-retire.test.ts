@@ -60,16 +60,19 @@ describe("resource retirement RPC", () => {
     expect(listing.ok && listing.data.find((row) => row.id === other)).toMatchObject({ retiredAt: null });
     const rows = await auditRows();
     expect(rows).toHaveLength(1);
+    expect(JSON.parse(rows[0]!.detail)).toEqual({ retiredAt: NOW });
     expect(rows[0]).toMatchObject({ actor_email: ADMIN_EMAIL, action: "resource.retire", target_type: "resource", target_id: resourceId, at: NOW });
 
     expect(await app.reactivateResource(jwt, resourceId)).toEqual({ ok: true, data: { id: resourceId, retiredAt: null } });
     expect(await retiredAt()).toBeNull();
     expect(await app.reactivateResource(jwt, resourceId)).toEqual({ ok: true, data: { id: resourceId, retiredAt: null } });
     expect((await auditRows()).map((row) => row.action)).toEqual(["resource.retire", "resource.reactivate"]);
+    expect(JSON.parse((await auditRows())[1]!.detail)).toEqual({ retiredAt: null });
     expect((await auditRows())[1]).toMatchObject({ actor_email: ADMIN_EMAIL, target_type: "resource", target_id: resourceId, at: NOW + 1_000 });
   });
 
   it.each(["retireResource", "reactivateResource"] as const)("%s validates JWT, identifier, and existence without an audit", async (method) => {
+    expect(await app[method]("", resourceId)).toEqual({ ok: false, reason: "unauthorized" });
     expect(await app[method]("bad", resourceId)).toEqual({ ok: false, reason: "unauthorized" });
     for (const id of [0, -1, 1.5, "1", Number.NaN]) {
       expect(await app[method](jwt, id as number)).toMatchObject({ ok: false, reason: "invalid_input" });
@@ -100,6 +103,7 @@ describe("retired resource behavior", () => {
     expect(await app.listSlots(resourceId)).toEqual({ ok: true, data: [] });
     expect(await newHold("other", slotId, "new")).toEqual({ ok: false, reason: "resource_retired" });
     expect(await app.createSlot(jwt, newSlot(resourceId))).toEqual({ ok: false, reason: "resource_retired" });
+    expect(await app.listMyHolds("member")).toMatchObject({ ok: true, data: [{ id: pending.data.id }] });
     expect(await newHold("member", pending.data.slotId, "pending")).toEqual(pending);
     expect((await app.confirmHold("member", { holdId: pending.data.id })).ok).toBe(true);
     expect(await app.listMyBookings("member")).toMatchObject({ ok: true, data: [{ id: booking.data.id }, { id: pending.data.id }] });
@@ -124,6 +128,23 @@ describe("retired resource behavior", () => {
     expect(result.ok && result.data).toMatchObject([
       { id: slotId, resourceId, resourceRetiredAt: NOW, bookings: [{ id: booking }] },
     ]);
+  });
+
+  it("concurrent retire requests change state and audit only once", async () => {
+    const results = await Promise.all([app.retireResource(jwt, resourceId), app.retireResource(jwt, resourceId)]);
+    expect(results[0]).toEqual(results[1]);
+    expect(await countRows("admin_audit")).toBe(1);
+    expect(await retiredAt()).toBe(NOW);
+  });
+
+  it("editing a retired resource does not reactivate it", async () => {
+    await app.retireResource(jwt, resourceId);
+    expect((await app.updateResource(jwt, {
+      id: resourceId, name: "季節包廂", holdTtlSeconds: 300, seatsPerHold: 4,
+      cancellationCutoffSeconds: 3600, description: "暫停提供",
+    })).ok).toBe(true);
+    expect(await retiredAt()).toBe(NOW);
+    expect(await app.listResources()).toEqual({ ok: true, data: [] });
   });
 
   it("serializes concurrent retirement with a new hold so no hold can be created after retirement wins", async () => {

@@ -128,6 +128,14 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
     return this.#admin().getResourceForAdmin(jwt, resourceId);
   }
 
+  retireResource(jwt: string, resourceId: number) {
+    return this.#admin().retireResource(jwt, resourceId);
+  }
+
+  reactivateResource(jwt: string, resourceId: number) {
+    return this.#admin().reactivateResource(jwt, resourceId);
+  }
+
   createResource(jwt: string, input: unknown) {
     return this.#admin().createResource(jwt, input);
   }
