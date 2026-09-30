@@ -1,10 +1,12 @@
 import { toNumber, toText } from "../shared/form-values";
 import { withFirstFieldDetail } from "../shared/reasons";
-import { describeFailure } from "./reasons";
+import { describeFailure, failureStatus } from "./reasons";
+
+type CancelFailureStatus = 403 | 404 | 409 | 422;
 
 export type CancelBookingPostOutcome =
   | { redirect: string; status: 303 }
-  | { error: string; status: 403 | 404 | 409 | 422 };
+  | { error: string; status: CancelFailureStatus };
 
 interface CancelBookingPostContext {
   jwt: string;
@@ -20,13 +22,6 @@ interface CancelBookingPostContext {
   /** 成功後的導向位址，由頁面在伺服器端決定。 */
   successUrl: (bookingId: number) => string;
 }
-
-const FAILURE_STATUS: Record<string, 403 | 404 | 409 | 422 | undefined> = {
-  unauthorized: 403,
-  invalid_input: 422,
-  booking_not_found: 404,
-  slot_started: 409,
-};
 
 /** 時段詳情頁與日程表共用；成功後的導向位址一律由 `successUrl` 產生，避免重送 POST 或由表單控制導向。 */
 export async function handleCancelBookingPost({
@@ -57,6 +52,6 @@ export async function handleCancelBookingPost({
   const message = describeFailure(result);
   return {
     error: result.reason === "invalid_input" ? withFirstFieldDetail(message.message, result.fields ?? {}) : message.message,
-    status: FAILURE_STATUS[result.reason] ?? 404,
+    status: failureStatus(result.reason, 404) as CancelFailureStatus,
   };
 }

@@ -156,6 +156,14 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
     return this.#admin().listAgendaForAdmin(jwt, input);
   }
 
+  searchMembersForAdmin(jwt: string, input: unknown) {
+    return this.#admin().searchMembersForAdmin(jwt, input);
+  }
+
+  getMemberForAdmin(jwt: string, input: unknown) {
+    return this.#admin().getMemberForAdmin(jwt, input);
+  }
+
   updateSlotCapacity(jwt: string, input: unknown) {
     return this.#admin().updateSlotCapacity(jwt, input);
   }

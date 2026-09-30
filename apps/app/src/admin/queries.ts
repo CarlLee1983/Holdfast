@@ -193,3 +193,86 @@ export async function selectFutureBookingCount(d1: D1Database, resourceId: numbe
   ).bind(resourceId, now, CONFIRMED).first<{ n: number }>();
   return row!.n;
 }
+
+export const MEMBER_SEARCH_LIMIT = 20;
+
+export interface MemberSummary {
+  id: string;
+  name: string;
+  email: string;
+}
+
+/**
+ * 依名稱或 email 搜尋會員。用 `instr(lower(…), lower(?))` 而不是 LIKE：查詢字串裡的 % 與 _
+ * 就是字面字元，不必跳脫。SQLite 的 lower() 只處理 ASCII，所以「不分大小寫」是 ASCII 範圍；中文名稱照字面比對。
+ */
+export async function selectMembersMatching(db: DrizzleD1Database, query: string): Promise<MemberSummary[]> {
+  return db
+    .select({ id: user.id, name: user.name, email: user.email })
+    .from(user)
+    .where(sql`(instr(lower(${user.name}), lower(${query})) > 0 OR instr(lower(${user.email}), lower(${query})) > 0)`)
+    .orderBy(asc(user.name), asc(user.id))
+    .limit(MEMBER_SEARCH_LIMIT);
+}
+
+export interface MemberReservation {
+  id: number;
+  slotId: number;
+  resourceName: string;
+  startsAt: number;
+  endsAt: number;
+  seats: number;
+}
+
+export interface MemberActiveHold extends MemberReservation {
+  expiresAt: number;
+}
+
+export interface MemberDetail {
+  member: MemberSummary;
+  holds: MemberActiveHold[];
+  bookings: MemberReservation[];
+}
+
+/** 會員目前有效的保留（`activeHold`）與開始時間晚於 `now` 的訂位；會員不存在回 null。 */
+export async function selectMemberDetail(
+  db: DrizzleD1Database,
+  memberId: string,
+  now: number,
+): Promise<MemberDetail | null> {
+  const [member] = await db
+    .select({ id: user.id, name: user.name, email: user.email })
+    .from(user)
+    .where(eq(user.id, memberId))
+    .limit(1);
+  if (!member) return null;
+
+  const rows = await db
+    .select({
+      id: holds.id,
+      slotId: holds.slotId,
+      status: holds.status,
+      resourceName: resources.name,
+      startsAt: slots.startsAt,
+      endsAt: slots.endsAt,
+      seats: holds.seats,
+      expiresAt: holds.expiresAt,
+    })
+    .from(holds)
+    .innerJoin(slots, eq(slots.id, holds.slotId))
+    .innerJoin(resources, eq(resources.id, slots.resourceId))
+    .where(
+      and(
+        eq(holds.memberId, memberId),
+        sql`(${activeHold(now)} OR (${holds.status} = ${CONFIRMED} AND ${slots.startsAt} > ${now}))`,
+      ),
+    )
+    .orderBy(asc(slots.startsAt), asc(holds.id));
+
+  const result: MemberDetail = { member, holds: [], bookings: [] };
+  for (const { status, expiresAt, ...reservation } of rows) {
+    if (status === CONFIRMED) result.bookings.push(reservation);
+    else result.holds.push({ ...reservation, expiresAt });
+  }
+  return result;
+}

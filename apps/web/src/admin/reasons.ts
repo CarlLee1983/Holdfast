@@ -13,6 +13,7 @@ const MESSAGES: Record<string, string> = {
   slot_not_found: "找不到這個時段",
   slot_in_use: "時段仍有保留或訂位紀錄（過期或已釋放的保留除外）",
   invalid_input: "輸入有誤，請修正後再送出",
+  member_not_found: "找不到這位會員",
   booking_not_found: "找不到這筆訂位",
   slot_started: "時段已開始，無法取消",
 };
@@ -24,4 +25,19 @@ export function describeFailure(result: {
   fields?: Record<string, string[]>;
 }): Failure {
   return { message: describeReason(MESSAGES, result.reason, "管理操作"), fields: result.fields ?? {} };
+}
+
+export type FailureStatus = 403 | 404 | 409 | 422 | 500;
+
+const FAILURE_STATUS: Record<string, FailureStatus | undefined> = {
+  unauthorized: 403,
+  invalid_input: 422,
+  member_not_found: 404,
+  booking_not_found: 404,
+  slot_started: 409,
+};
+
+/** 管理 RPC 失敗原因對應的 HTTP 狀態；沒列出的原因用 `fallback`（各頁依情境決定）。 */
+export function failureStatus(reason: string, fallback: FailureStatus = 500): FailureStatus {
+  return FAILURE_STATUS[reason] ?? fallback;
 }

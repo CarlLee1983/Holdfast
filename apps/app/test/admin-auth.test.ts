@@ -28,6 +28,8 @@ async function adminCalls(jwt: string) {
     updateSlotTime: () => app.updateSlotTime(jwt, { slotId: 1, startsAt: NOW + 1000, endsAt: NOW + 2000 }),
     deleteSlot: () => app.deleteSlot(jwt, { slotId: 1 }),
     listAgendaForAdmin: () => app.listAgendaForAdmin(jwt, { from: NOW, to: NOW + 3_600_000 }),
+    searchMembersForAdmin: () => app.searchMembersForAdmin(jwt, { query: "a" }),
+    getMemberForAdmin: () => app.getMemberForAdmin(jwt, { memberId: "m1" }),
   };
 }
 
