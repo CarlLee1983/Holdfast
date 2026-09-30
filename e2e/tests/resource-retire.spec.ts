@@ -30,8 +30,8 @@ test("停用資源後，自己的有效保留仍可確認", async ({ page, conte
       VALUES ('${memberId}', '停用測試會員', '${key}@members.holdfast.invalid', 0, ${now}, ${now});
     INSERT INTO session (id, expires_at, token, created_at, updated_at, user_id)
       VALUES ('${token}', ${now + 86_400_000}, '${token}', ${now}, ${now}, '${memberId}');
-    INSERT INTO resources (name, hold_ttl_seconds, seats_per_hold, cancellation_cutoff_seconds, description)
-      VALUES ('${name}', 600, 4, 3600, '停用後仍應顯示');
+    INSERT INTO resources (name, hold_ttl_seconds, seats_per_hold, cancellation_cutoff_seconds, description, retired_at)
+      VALUES ('${name}', 600, 4, 3600, '停用後仍應顯示', ${now + 1});
     INSERT INTO slots (resource_id, starts_at, ends_at, capacity)
       SELECT id, ${startsAt}, ${endsAt}, 10 FROM resources WHERE name = '${name}';
     INSERT INTO holds (slot_id, member_id, seats, status, expires_at, idempotency_key, created_at)
@@ -48,7 +48,6 @@ test("停用資源後，自己的有效保留仍可確認", async ({ page, conte
   await expect(page.getByRole("main")).toContainText(name);
   await expect(page.getByRole("main")).toContainText("停用後仍應顯示");
 
-  d1(`UPDATE resources SET retired_at = ${Date.now()} WHERE name = '${name}';`);
   expect((await page.reload())?.status()).toBe(200);
   await expect(confirmButton(page)).toBeVisible();
   await expect(page.getByRole("main")).toContainText(name);
