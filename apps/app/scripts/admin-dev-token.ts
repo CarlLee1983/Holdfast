@@ -5,8 +5,7 @@
 // 用法：bun run admin:dev-token [email]
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { SignJWT } from "jose";
-import { generateDevKeys, LOCAL_TEAM_DOMAIN } from "./dev-keys";
+import { generateDevKeys, LOCAL_TEAM_DOMAIN, signAccessJwt } from "./dev-keys";
 
 const TEAM_DOMAIN = LOCAL_TEAM_DOMAIN;
 const AUDIENCE = "holdfast-dev-audience";
@@ -31,14 +30,7 @@ async function upsertDevVars(file: string, values: Record<string, string>) {
 
 const { privateKey, publicJwk, privateJwk } = await generateDevKeys(KID);
 
-const now = Math.floor(Date.now() / 1000);
-const token = await new SignJWT({ email })
-  .setProtectedHeader({ alg: "RS256", kid: KID })
-  .setIssuer(`https://${TEAM_DOMAIN}`)
-  .setAudience(AUDIENCE)
-  .setIssuedAt(now)
-  .setExpirationTime(now + TOKEN_LIFETIME_SECONDS)
-  .sign(privateKey);
+const token = await signAccessJwt({ privateKey, kid: KID, email, audience: AUDIENCE, lifetimeSeconds: TOKEN_LIFETIME_SECONDS });
 
 const keyDir = path.join(repoRoot, ".wrangler/admin-dev");
 await mkdir(keyDir, { recursive: true });

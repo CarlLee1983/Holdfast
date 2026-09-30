@@ -52,3 +52,17 @@ export const HOLD_OWNER_SESSION = { id: "e2e-hold-owner-session", token: "e2e-ho
  */
 export const LOGIN_RESUME_MEMBER = { id: "e2e-login-resume-member", name: "E2E 登入銜接會員", email: "e2e-login-resume@members.holdfast.invalid" } as const;
 export const LOGIN_RESUME_SESSION = { id: "e2e-login-resume-session", token: "e2e-login-resume-session-token" } as const;
+
+/**
+ * 管理者取消訂位測試專用的會員與 session：它的訂位會被管理者取消，
+ * 與其他 spec 共用會員會讓對方 /me 的訂位斷言被並行的取消影響，所以另立一位。
+ */
+export const ADMIN_CANCEL_MEMBER = { id: "e2e-admin-cancel-member", name: "E2E 被取消會員", email: "e2e-admin-cancel@members.holdfast.invalid" } as const;
+export const ADMIN_CANCEL_SESSION = { id: "e2e-admin-cancel-session", token: "e2e-admin-cancel-session-token" } as const;
+
+/**
+ * 管理者的 Access 身分：E2E 自己簽 JWT（serve.ts），audience 與 serve.ts 寫進 E2E 產生的 App `.dev.vars`（`.wrangler/e2e/app/.dev.vars`，不是開發者的）的 ACCESS_AUD 一致。
+ * 只用於 E2E 專用、每次重建的本機設定，不是任何環境的真值。
+ */
+export const ADMIN_EMAIL = "e2e-admin@admin.holdfast.invalid";
+export const ADMIN_ACCESS_AUD = "holdfast-e2e-audience";

@@ -54,7 +54,7 @@ bun run e2e            # Playwright 主流程（首次先在 e2e/ 執行 bunx pl
 - 會員面樣式為純 CSS（全域 token 加 Astro scoped style），視覺語言是潮間 Tidal Table（墨綠、米灰紙色、細線、無卡片），字型 Noto Serif TC／Noto Sans TC 由 Google Fonts 載入；店家資訊集中在 `apps/web/src/merchant/merchant.ts`。不使用 Tailwind 或元件庫；管理後台共用同一份 token 與 `base.css`，另有自己的緊湊版面樣式 `admin.css`；只有會員頁用的元件樣式放 `member.css`。
 - 時間一律以 UTC epoch 毫秒儲存與傳遞，只有 Web Worker 顯示時換成 Asia/Taipei。
 - 測試怎麼替換「現在」：main Worker 與測試跑在同一個 isolate，`test/clock.ts` 的 `setNow()` 偽造全域 `Date`，經 RPC 呼叫的 `systemClock` 就會讀到；因此應用程式碼只能透過 `Clock` 取得時間，直接呼叫 `Date.now()` 或 `new Date()` 會繞過測試的時間控制。
-- E2E 驗證 Astro、RPC 與 App Worker 的接線，不重複業務規則；它用自己的狀態（`.wrangler/e2e`，每次重建）與固定的測試 secret，不碰 `.wrangler/state` 與 `.dev.vars`，埠固定 8790。社群登入以直接寫入 session 取代（ADR 0013），production 不含任何測試登入。
+- E2E 驗證 Astro、RPC 與 App Worker 的接線，不重複業務規則；它用自己的狀態（`.wrangler/e2e`，每次重建）與固定的測試 secret，不碰 `.wrangler/state` 與 `.dev.vars`，埠固定 8790。社群登入以直接寫入 session 取代（ADR 0013），管理者以 E2E 自己產生的 Access JWT header 進入後台，production 不含任何測試登入。
 - 兩個 Worker 都開啟 `observability`（Workers Logs）。部署順序固定 App 先、Web 後（ADR 0005）。
 
 ## 管理後台

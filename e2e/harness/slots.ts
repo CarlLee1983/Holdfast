@@ -14,7 +14,7 @@ const TAIPEI_OFFSET_MS = 8 * HOUR_MS;
  * - 大廳用餐：+1 天 03:00Z（台北 11:00）、+1 天 11:00Z（19:00）、+2 天 11:00Z（19:00）；
  * - 包廂：+1 天 11:00Z（19:00）、+2 天 02:00Z（10:00）；
  * - 每筆保留佔 2 位（`pickSlot` 固定 `seats=2`）。共用最多的包廂 +1 天 11:00Z（容量 10）有三個會保留的角色，最多佔 6 位，
- *   至少剩 4 位，所以選 2 位一定還能按，只選不保留的 login-resume 選 3 位也一定能按；
+ *   至少剩 4 位，所以選 2 位一定還能按；大廳用餐 +1 天 03:00Z（容量 20）由 `main`（3 位）與 `admin-cancel`（2 位）共用，餘量充足；只選不保留的 login-resume 選 3 位也一定能按；
  *   但剩餘位數隨其他 spec 的執行順序變動，其他超過這個餘量的斷言不能假設它有幾位可訂；
  * - 人數 2 位在兩個資源的單筆名額上限內，首頁一定列出這些時段。
  */
@@ -34,6 +34,8 @@ const SLOT_ROLES = {
   "double-submit-rejected": { resource: "大廳用餐", dayOffset: 2, utcHour: 11 },
   // 未登入選時段的登入銜接：只選不保留，不佔名額；選 3 位（不是預設的 2 位）才驗得出人數有被還原，餘量見檔頭
   "login-resume": { resource: "包廂", dayOffset: 1, utcHour: 11 },
+  // 管理者取消訂位：與 main 同一時段（容量 20，餘量充足），但屬於專用會員 ADMIN_CANCEL_MEMBER，訂位被取消不影響 main 的會員
+  "admin-cancel": { resource: "大廳用餐", dayOffset: 1, utcHour: 3 },
 } as const;
 
 export type SlotRole = keyof typeof SLOT_ROLES;
