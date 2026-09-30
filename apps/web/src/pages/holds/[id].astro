@@ -1,11 +1,13 @@
 ---
+import BookingDetails from "../../components/BookingDetails.astro";
 import MemberLayout from "../../layouts/MemberLayout.astro";
 import { env } from "cloudflare:workers";
 import { loginUrl } from "../../auth/member";
 import { loadCatalog } from "../../catalog/load-catalog";
-import { formatTaipeiDate, formatTaipeiTime } from "../../catalog/taipei-time";
+import { formatTaipeiDateTime } from "../../catalog/taipei-time";
 import { cancellationRuleText } from "../../holds/cancellation";
 import { handleConfirmPost } from "../../holds/confirm";
+import { bookingPagePath, bookingPageState } from "../../holds/booking-page";
 import { holdPageState, reselectUrl } from "../../holds/hold-page";
 import { holdTtlRuleText } from "../../holds/rule-text";
 import { MERCHANT } from "../../merchant/merchant";
@@ -30,12 +32,19 @@ if (!result.ok) throw new Error(`listMyHolds 失敗：${result.reason}`);
 const catalog = await loadCatalog(env.APP);
 
 const state = holdPageState(result.data, Astro.params.id, catalog);
+// 保留與訂位是同一筆資料、同一個 id：不是有效保留、卻是自己的訂位（已確認，或重複送出後重新渲染），就導到完成頁。
+// 只有在這個情況才多查一次 listMyBookings
+if (state.kind === "unavailable") {
+  const bookingsResult = await env.APP.listMyBookings(member.memberId);
+  if (!bookingsResult.ok) throw new Error(`listMyBookings 失敗：${bookingsResult.reason}`);
+  const booking = bookingPageState(bookingsResult.data, Astro.params.id);
+  if (booking.kind === "found") return Astro.redirect(bookingPagePath(booking.booking.id), 303);
+}
 // 確認失敗且保留仍有效時沿用失敗的狀態碼；unavailable 一律 404（重新渲染時保留可能剛好過期，同樣是 unavailable）
 if (state.kind === "unavailable") Astro.response.status = 404;
 else if (errorStatus !== null) Astro.response.status = errorStatus;
 
 const now = Date.now();
-const formatDateTime = (epochMs: number) => `${formatTaipeiDate(epochMs)} ${formatTaipeiTime(epochMs)}`;
 ---
 
 <MemberLayout title={state.kind === "active" ? "確認訂位" : "保留已過期或不存在"} noindex>
@@ -52,13 +61,13 @@ const formatDateTime = (epochMs: number) => `${formatTaipeiDate(epochMs)} ${form
       <div
         class="hold-page"
         data-remaining-ms={state.hold.expiresAt - now}
-        data-label={`${state.resource.name} ${formatDateTime(state.hold.startsAt)}`}
+        data-label={`${state.resource.name} ${formatTaipeiDateTime(state.hold.startsAt)}`}
       >
         <header class="head">
           <h1>確認訂位</h1>
           {formError && <p role="alert">{formError}</p>}
           <p class="expiry">
-            請於 <time datetime={new Date(state.hold.expiresAt).toISOString()}>{formatDateTime(state.hold.expiresAt)}</time> 前確認
+            請於 <time datetime={new Date(state.hold.expiresAt).toISOString()}>{formatTaipeiDateTime(state.hold.expiresAt)}</time> 前確認
           </p>
           {/* 預設隱藏，由用戶端 script 顯示；沒有 JS 時只剩上面的絕對到期時間 */}
           <p class="meta hold-countdown" hidden>
@@ -67,21 +76,13 @@ const formatDateTime = (epochMs: number) => `${formatTaipeiDate(epochMs)} ${form
           <div id="hold-announcer" class="visually-hidden" aria-live="polite"></div>
         </header>
 
-        <dl class="detail">
-          <dt>日期</dt>
-          <dd class="numeric">{formatTaipeiDate(state.hold.startsAt)}</dd>
-          <dt>時間</dt>
-          <dd class="numeric">
-            {formatTaipeiTime(state.hold.startsAt)}–{formatTaipeiTime(state.hold.endsAt)}
-          </dd>
-          <dt>人數</dt>
-          <dd>{state.hold.seats} 位</dd>
-          <dt>座位</dt>
-          <dd>
-            {state.resource.name}
-            {state.resource.description && <span class="meta">{state.resource.description}</span>}
-          </dd>
-        </dl>
+        <BookingDetails
+          startsAt={state.hold.startsAt}
+          endsAt={state.hold.endsAt}
+          seats={state.hold.seats}
+          resourceName={state.resource.name}
+          description={state.resource.description}
+        />
 
         <p class="as-member">以{member.name}的身分訂位</p>
 
@@ -96,7 +97,7 @@ const formatDateTime = (epochMs: number) => `${formatTaipeiDate(epochMs)} ${form
 
         <div class="actions">
           <form method="post">
-            <button type="submit" data-confirm>確認訂位</button>
+            <button type="submit" class="primary-action" data-confirm>確認訂位</button>
           </form>
           <a class="reselect" href={reselectUrl(state.hold)}>重新選擇時段</a>
         </div>
@@ -131,34 +132,6 @@ const formatDateTime = (epochMs: number) => `${formatTaipeiDate(epochMs)} ${form
     color: var(--color-ink);
   }
 
-  /* 明細：細線分隔的兩欄列表，時間與日期用襯線數字 */
-  .detail {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    margin: 0;
-    border-top: 1px solid var(--color-rule);
-  }
-  .detail dt,
-  .detail dd {
-    margin: 0;
-    padding-block: var(--space-sm);
-    border-bottom: 1px solid var(--color-rule);
-  }
-  .detail dt {
-    padding-inline-end: var(--space-lg);
-    font-size: var(--text-sm);
-    color: var(--color-muted);
-  }
-  .detail dd {
-    display: grid;
-    gap: var(--space-2xs);
-    font-size: var(--text-md);
-    font-weight: 500;
-  }
-  .detail dd .meta {
-    font-size: var(--text-sm);
-    font-weight: 400;
-  }
   .as-member {
     font-size: var(--text-sm);
   }
@@ -174,10 +147,6 @@ const formatDateTime = (epochMs: number) => `${formatTaipeiDate(epochMs)} ${form
     flex-wrap: wrap;
     align-items: center;
     gap: var(--space-md) var(--space-lg);
-  }
-  .actions button {
-    min-height: var(--control-height-lg);
-    padding-inline: var(--space-xl);
   }
   .reselect {
     font-size: var(--text-sm);

@@ -122,7 +122,7 @@ test.describe("沒有 JavaScript", () => {
     await context.addCookies([memberSessionCookie(NO_JS_SESSION)]);
   });
 
-  test("用「更新」按鈕切換人數與日期，選時段後保留表單照常送出，確認頁只有絕對到期時間，確認後成功", async ({ page }) => {
+  test("用「更新」按鈕切換人數與日期，選時段後保留表單照常送出，確認頁只有絕對到期時間，確認後進入完成頁", async ({ page }) => {
     const { date } = slotInfo("no-js");
     await page.goto("/");
     await page.getByLabel("用餐人數").selectOption("3");
@@ -144,8 +144,10 @@ test.describe("沒有 JavaScript", () => {
     await expect(page.getByText(/^\d{2,}:\d{2}$/)).toBeHidden();
 
     await confirmButton(page).click();
-    await expect(page).toHaveURL(/\/me\?confirmed=\d+$/);
-    await expect(page.getByRole("status")).toHaveText("訂位成功");
+    await expect(page).toHaveURL(/\/bookings\/\d+$/);
+    await expect(page.getByRole("heading", { level: 1, name: "訂位完成" })).toBeVisible();
+    await expect(page.getByRole("main")).toContainText("包廂");
+    await page.getByRole("link", { name: "查看我的保留與訂位" }).click();
     await expect(page.getByRole("region", { name: "我的訂位" }).getByRole("article", { name: /包廂/ })).toHaveCount(1);
   });
 });

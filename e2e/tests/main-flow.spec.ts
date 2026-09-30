@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { chooseOption, confirmButton, holdButton, slotButton, slotInfo } from "../harness/slots";
 import { memberSessionCookie } from "../harness/session-cookie";
 
-test("會員主流程：登入 → 選人數、日期與時段 → 保留 → 確認頁確認 → 會員頁看到訂位 → 取消", async ({ page, context }) => {
+test("會員主流程：登入 → 選人數、日期與時段 → 保留 → 確認頁確認 → 完成頁 → 會員頁看到訂位 → 取消", async ({ page, context }) => {
   await context.addCookies([memberSessionCookie()]);
 
   await page.goto("/me");
@@ -37,8 +37,19 @@ test("會員主流程：登入 → 選人數、日期與時段 → 保留 → �
   await expect(page.getByRole("link", { name: "重新選擇時段" })).toHaveAttribute("href", `/?seats=3&date=${date}`);
 
   await confirmButton(page).click();
-  await expect(page).toHaveURL(/\/me\?confirmed=\d+$/);
-  await expect(page.getByRole("status")).toHaveText("訂位成功");
+
+  // 確認後進入完成頁：明細、取消截止時間、店家地址與電話
+  await expect(page).toHaveURL(/\/bookings\/\d+$/);
+  await expect(page.getByRole("heading", { level: 1, name: "訂位完成" })).toBeVisible();
+  const done = page.getByRole("main");
+  await expect(done).toContainText("3 位");
+  await expect(done).toContainText("大廳用餐");
+  await expect(done).toContainText("取消截止時間");
+  await expect(done).toContainText("台北市中山區（示意地址）");
+  await expect(done).toContainText("02-0000-0000");
+
+  await page.getByRole("link", { name: "查看我的保留與訂位" }).click();
+  await expect(page).toHaveURL(/\/me$/);
   await expect(page.getByText("目前沒有有效的保留")).toBeVisible();
   const booking = page.getByRole("region", { name: "我的訂位" }).getByRole("article", { name: /大廳用餐/ });
   await expect(booking).toContainText("已訂位");
@@ -71,5 +82,6 @@ test("選人數與日期後，時段依條件出現或消失", async ({ page }) 
   await chooseOption(page, "用餐人數", "6");
   await expect(page.getByRole("button", { name: /大廳用餐/ })).toHaveCount(0);
   await expect(page.getByText("大廳用餐最多 4 位，這個人數不列出它的時段。")).toBeVisible();
-  await expect(page.getByRole("button", { name: "19:00 包廂", exact: true })).toBeVisible();
+  // 只驗包廂仍被列出：其他 spec 並行保留同一時段，剩餘位數可能少於 6 而顯示「剩 N 位」並停用，那不是這則要驗的
+  await expect(page.getByRole("button", { name: /^19:00 包廂/ })).toBeVisible();
 });

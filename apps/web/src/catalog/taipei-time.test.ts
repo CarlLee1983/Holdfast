@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   formatTaipeiDate,
   formatTaipeiDayHeading,
+  formatTaipeiDateTime,
   formatTaipeiDayLabel,
   formatTaipeiTime,
   taipeiDateKey,
@@ -28,6 +29,16 @@ describe("台北時間格式", () => {
 
     expect(formatTaipeiDate(instant)).toBe("2026/09/29（週二）");
     expect(formatTaipeiTime(instant)).toBe("23:59");
+  });
+});
+
+describe("formatTaipeiDateTime", () => {
+  it("日期與時間以空格相接", () => {
+    expect(formatTaipeiDateTime(Date.UTC(2026, 8, 30, 11, 0))).toBe("2026/09/30（週三） 19:00");
+  });
+
+  it("跨過台北日期界線時日期與時間一起進位", () => {
+    expect(formatTaipeiDateTime(Date.UTC(2026, 8, 29, 16, 30))).toBe("2026/09/30（週三） 00:30");
   });
 });
 

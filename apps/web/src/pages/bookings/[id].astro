@@ -1,0 +1,97 @@
+---
+import BookingDetails from "../../components/BookingDetails.astro";
+import MemberLayout from "../../layouts/MemberLayout.astro";
+import { env } from "cloudflare:workers";
+import { loginUrl } from "../../auth/member";
+import { formatTaipeiDateTime } from "../../catalog/taipei-time";
+import { bookingPageState } from "../../holds/booking-page";
+import { bookingCancellation } from "../../holds/cancellation";
+import { MERCHANT } from "../../merchant/merchant";
+import { holdOrBookingStatus } from "../../shared/booking-status";
+
+export const prerender = false;
+
+const member = Astro.locals.member;
+if (!member) return Astro.redirect(loginUrl(Astro.url), 303);
+
+// RPC 回報失敗時直接丟出，不把故障顯示成「找不到」
+const result = await env.APP.listMyBookings(member.memberId);
+if (!result.ok) throw new Error(`listMyBookings 失敗：${result.reason}`);
+
+const state = bookingPageState(result.data, Astro.params.id);
+if (state.kind === "not-found") Astro.response.status = 404;
+
+const booking = state.kind === "found" ? state.booking : null;
+const heading = booking === null ? "找不到這筆訂位" : booking.status === "cancelled" ? "此訂位已取消" : "訂位完成";
+// 取消截止時間只對已確認的訂位有意義；取消本身仍在 /me
+const cancellation = booking ? bookingCancellation(booking, Date.now()) : "not-applicable";
+---
+
+<MemberLayout title={heading} noindex>
+  <div class="booking-page">
+    <header class="head">
+      <h1>{heading}</h1>
+      {booking?.status === "cancelled" && <p class="meta"><span class="tag tag--quiet">{holdOrBookingStatus(booking)}</span></p>}
+    </header>
+
+    {
+      booking && (
+        <>
+          <BookingDetails
+            startsAt={booking.startsAt}
+            endsAt={booking.endsAt}
+            seats={booking.seats}
+            resourceName={booking.resourceName}
+          />
+
+          {cancellation !== "not-applicable" && (
+            <p class="cutoff">
+              取消截止時間 <time datetime={new Date(booking.cancellableUntil).toISOString()}>{formatTaipeiDateTime(booking.cancellableUntil)}</time>
+              {cancellation === "past-cutoff" && "（已過）"}
+            </p>
+          )}
+
+          {booking.status === "confirmed" && (
+            <dl class="shop">
+              <dt>地址</dt>
+              <dd>{MERCHANT.address}</dd>
+              <dt>電話</dt>
+              <dd class="numeric">{MERCHANT.phone}</dd>
+            </dl>
+          )}
+        </>
+      )
+    }
+
+    <p><a class="primary-action" href="/me">查看我的保留與訂位</a></p>
+  </div>
+</MemberLayout>
+
+<style>
+  .booking-page {
+    display: grid;
+    gap: var(--space-lg);
+  }
+  .head {
+    display: grid;
+    gap: var(--space-xs);
+    justify-items: start;
+  }
+  .cutoff {
+    font-size: var(--text-sm);
+  }
+  /* 店家資訊：與明細同一種細線兩欄語言，字級小一點 */
+  .shop {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: var(--space-2xs) var(--space-lg);
+    margin: 0;
+    font-size: var(--text-sm);
+  }
+  .shop dt {
+    color: var(--color-muted);
+  }
+  .shop dd {
+    margin: 0;
+  }
+</style>

@@ -246,6 +246,26 @@ label {
   border-top: 1px solid var(--color-rule);
 }
 
+/* 頁面的主要動作（確認頁的按鈕、完成頁的連結）：加大的墨綠實心，連結版另補上按鈕的外觀 */
+.primary-action {
+  min-height: var(--control-height-lg);
+  padding-inline: var(--space-xl);
+}
+a.primary-action {
+  display: inline-grid;
+  place-items: center;
+  border-radius: var(--radius);
+  background: var(--color-brand);
+  color: var(--color-on-brand);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-decoration: none;
+}
+a.primary-action:hover {
+  background: var(--color-brand-2);
+}
+
 /* 保留倒數（DOM 約定見 holds/countdown-client.ts）：到期後由 script 換成「已到期」並加上 hold-expired */
 .hold-countdown {
   font-variant-numeric: tabular-nums;

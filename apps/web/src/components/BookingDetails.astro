@@ -1,0 +1,59 @@
+---
+import { formatTaipeiDate, formatTaipeiTime } from "../catalog/taipei-time";
+
+interface Props {
+  startsAt: number;
+  endsAt: number;
+  seats: number;
+  resourceName: string;
+  /** 資源說明；沒有就不顯示 */
+  description?: string | null;
+}
+
+const { startsAt, endsAt, seats, resourceName, description } = Astro.props;
+---
+
+<dl class="detail">
+  <dt>日期</dt>
+  <dd class="numeric">{formatTaipeiDate(startsAt)}</dd>
+  <dt>時間</dt>
+  <dd class="numeric">{formatTaipeiTime(startsAt)}–{formatTaipeiTime(endsAt)}</dd>
+  <dt>人數</dt>
+  <dd>{seats} 位</dd>
+  <dt>座位</dt>
+  <dd>
+    {resourceName}
+    {description && <span class="meta">{description}</span>}
+  </dd>
+</dl>
+
+<style>
+  /* 明細：細線分隔的兩欄列表，時間與日期用襯線數字。確認頁與完成頁共用 */
+  .detail {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    margin: 0;
+    border-top: 1px solid var(--color-rule);
+  }
+  .detail dt,
+  .detail dd {
+    margin: 0;
+    padding-block: var(--space-sm);
+    border-bottom: 1px solid var(--color-rule);
+  }
+  .detail dt {
+    padding-inline-end: var(--space-lg);
+    font-size: var(--text-sm);
+    color: var(--color-muted);
+  }
+  .detail dd {
+    display: grid;
+    gap: var(--space-2xs);
+    font-size: var(--text-md);
+    font-weight: 500;
+  }
+  .detail dd .meta {
+    font-size: var(--text-sm);
+    font-weight: 400;
+  }
+</style>

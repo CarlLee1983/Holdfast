@@ -18,26 +18,26 @@ interface MemberPostSpec {
   url: URL;
   /** 送給 App 的輸入欄位名稱。 */
   field: string;
-  /** 成功後導回 `/me?<successParam>=<id>`。 */
-  successParam: string;
+  /** 成功後導向的網址，由成功操作回傳的編號組成。 */
+  successUrl: (id: number) => string;
   call: (memberId: string, input: Record<string, number>) => Promise<RpcResult>;
   describe: (reason: string) => string;
 }
 
-/** 會員頁與確認頁 POST 的共同流程：未登入導向登入；成功導向會員頁；失敗回可顯示的訊息與狀態碼。 */
+/** 會員頁與確認頁 POST 的共同流程：未登入導向登入；成功導向 successUrl；失敗回可顯示的訊息與狀態碼。 */
 export async function handleMemberFormPost({
   member,
   id,
   url,
   field,
-  successParam,
+  successUrl,
   call,
   describe,
 }: MemberPostSpec): Promise<MemberPostOutcome> {
   if (!member) return { redirect: loginUrl(url), status: 303 };
 
   const result = await call(member.memberId, { [field]: id });
-  if (result.ok) return { redirect: `/me?${successParam}=${result.data.id}`, status: 303 };
+  if (result.ok) return { redirect: successUrl(result.data.id), status: 303 };
 
   const message = describe(result.reason);
   const error = result.reason === "invalid_input" && result.fields ? withFirstFieldDetail(message, result.fields) : message;

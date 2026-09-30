@@ -1,14 +1,6 @@
 import { findResourceBySlotId } from "../catalog/find-resource";
 import { taipeiDateKey } from "../catalog/taipei-time";
-
-const POSITIVE_INTEGER = /^[1-9]\d*$/;
-
-/** 網址上的保留編號：正整數的標準寫法（不含前導 0、正負號、小數），否則 null。 */
-export function parseHoldId(raw: string | undefined): number | null {
-  if (raw === undefined || !POSITIVE_INTEGER.test(raw)) return null;
-  const id = Number(raw);
-  return Number.isSafeInteger(id) ? id : null;
-}
+import { parseRecordId } from "./record-id";
 
 export type HoldPageState<H, R> = { kind: "active"; hold: H; resource: R } | { kind: "unavailable" };
 
@@ -23,7 +15,7 @@ export function holdPageState<H extends { id: number; slotId: number }, R>(
   catalog: readonly { resource: R; slots: readonly { id: number }[] }[],
 ): HoldPageState<H, R> {
   const unavailable = { kind: "unavailable" } as const;
-  const id = parseHoldId(rawId);
+  const id = parseRecordId(rawId);
   if (id === null) return unavailable;
 
   const hold = holds.find((h) => h.id === id);

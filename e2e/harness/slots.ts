@@ -13,7 +13,8 @@ const TAIPEI_OFFSET_MS = 8 * HOUR_MS;
  * 都在明天以後、尚未開始，換成台北時間（UTC+8）就是可推算的日期與時間：
  * - 大廳用餐：+1 天 03:00Z（台北 11:00）、+1 天 11:00Z（19:00）、+2 天 11:00Z（19:00）；
  * - 包廂：+1 天 11:00Z（19:00）、+2 天 02:00Z（10:00）；
- * - 其他會員的保留只佔一個名額，不會讓任何時段額滿，所以這些時段都能按；
+ * - 每筆保留佔 2 位（`pickSlot` 固定 `seats=2`）。共用最多的包廂 +1 天 11:00Z（容量 10）有三個角色，最多佔 6 位，
+ *   選 2 位時一定還能按；但剩餘位數隨其他 spec 的執行順序變動，選更多人數的斷言不能假設它有幾位可訂；
  * - 人數 2 位在兩個資源的單筆名額上限內，首頁一定列出這些時段。
  */
 const SLOT_ROLES = {
@@ -24,6 +25,10 @@ const SLOT_ROLES = {
   "countdown-list": { resource: "包廂", dayOffset: 1, utcHour: 11 },
   "double-submit-confirm": { resource: "包廂", dayOffset: 1, utcHour: 11 },
   "no-js": { resource: "包廂", dayOffset: 2, utcHour: 2 },
+  // 確認頁／完成頁「別人的保留與訂位」測試的擁有者（HOLD_OWNER_MEMBER）專用。該會員的「別人的保留」測試已用 main 留下一筆有效保留，
+  // 而同一會員同一時段只能有一筆有效的保留或訂位，所以這兩個角色各用一個不同於 main 的時段；測試會確認它們，確認後不佔有效保留的額度
+  "booking-owner": { resource: "包廂", dayOffset: 1, utcHour: 11 },
+  "booking-owner-redirect": { resource: "大廳用餐", dayOffset: 2, utcHour: 11 },
   // 專供「送出會被伺服器拒絕」的測試：該會員從不在這個時段建立保留，才不會先撞到 already_in_slot
   "double-submit-rejected": { resource: "大廳用餐", dayOffset: 2, utcHour: 11 },
 } as const;

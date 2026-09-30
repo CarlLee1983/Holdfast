@@ -16,10 +16,10 @@ describe("handleConfirmPost", () => {
     expect(app.confirmHold).not.toHaveBeenCalled();
   });
 
-  it("成功：303 到 /me?confirmed=<id>，以會員編號與網址上的保留編號呼叫 App", async () => {
+  it("成功：303 到完成頁 /bookings/<id>，以會員編號與網址上的保留編號呼叫 App", async () => {
     const app = fakeApp({ ok: true, data: { id: 9 } });
 
-    expect(await run(app, member, "9")).toEqual({ redirect: "/me?confirmed=9", status: 303 });
+    expect(await run(app, member, "9")).toEqual({ redirect: "/bookings/9", status: 303 });
     expect(app.confirmHold).toHaveBeenCalledWith("m1", { holdId: 9 });
   });
 
