@@ -20,6 +20,8 @@ const SLOT_ROLES = {
   main: { resource: "大廳用餐", dayOffset: 1, utcHour: 3 },
   "double-submit": { resource: "大廳用餐", dayOffset: 1, utcHour: 11 },
   countdown: { resource: "大廳用餐", dayOffset: 2, utcHour: 11 },
+  // 倒數會員的第二個時段（會員頁倒數的測試用）；與 double-submit-confirm 同一時段，但屬於不同會員
+  "countdown-list": { resource: "包廂", dayOffset: 1, utcHour: 11 },
   "double-submit-confirm": { resource: "包廂", dayOffset: 1, utcHour: 11 },
   "no-js": { resource: "包廂", dayOffset: 2, utcHour: 2 },
   // 專供「送出會被伺服器拒絕」的測試：該會員從不在這個時段建立保留，才不會先撞到 already_in_slot
@@ -55,6 +57,11 @@ export function slotButton(page: Page, role: SlotRole): Locator {
 /** 首頁底部摘要列的主按鈕；選了時段時寫「保留這個時段」。 */
 export function holdButton(page: Page): Locator {
   return page.getByRole("button", { name: "保留這個時段" });
+}
+
+/** 確認頁的主按鈕「確認訂位」。 */
+export function confirmButton(page: Page): Locator {
+  return page.getByRole("button", { name: "確認訂位" });
 }
 
 /** 直接以網址選好人數與日期，點該角色的時段，等它被選中，回傳「保留這個時段」按鈕。 */

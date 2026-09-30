@@ -3,9 +3,7 @@ import MemberLayout from "../layouts/MemberLayout.astro";
 import { env } from "cloudflare:workers";
 import { loginUrl } from "../auth/member";
 import { CANCEL_INTENT } from "../holds/cancel";
-import { CONFIRM_INTENT } from "../holds/confirm";
 import { handleMePost } from "../holds/me-post";
-import { heldNotice } from "../holds/held-notice";
 import { formatTaipeiDate, formatTaipeiTime } from "../catalog/taipei-time";
 import { bookingCancellation } from "../holds/cancellation";
 import { holdOrBookingStatus } from "../shared/booking-status";
@@ -37,8 +35,6 @@ const confirmedId = Astro.url.searchParams.get("confirmed");
 const cancelledId = Astro.url.searchParams.get("cancelled");
 const now = Date.now();
 
-const notice = heldNotice(holds, Astro.url.searchParams.get("held"));
-
 // 訂位狀態對應的標籤樣式；領域 status 不直接當 CSS class
 const TAG_VARIANT = { confirmed: "tag--solid", cancelled: "tag--quiet" } as const;
 
@@ -51,8 +47,6 @@ const formatDateTime = (epochMs: number) => `${formatTaipeiDate(epochMs)} ${form
   {formError && <p role="alert">{formError}</p>}
   {confirmedId !== null && bookings.some((b) => String(b.id) === confirmedId && b.status === "confirmed") && <p role="status">訂位成功</p>}
   {cancelledId !== null && /^\d+$/.test(cancelledId) && <p role="status">已取消訂位</p>}
-  {notice?.kind === "held" && <p role="status">保留成功，請於 {formatDateTime(notice.hold.expiresAt)} 前確認</p>}
-  {notice?.kind === "missing" && <p role="status">此保留已過期或不存在</p>}
   <section class="list-section" aria-labelledby="holds-heading">
     <h2 id="holds-heading" class="eyebrow">我的保留</h2>
     {
@@ -77,7 +71,7 @@ const formatDateTime = (epochMs: number) => `${formatTaipeiDate(epochMs)} ${form
                       {formatTaipeiTime(hold.startsAt)}–{formatTaipeiTime(hold.endsAt)}
                     </span>
                   </p>
-                  <p class="meta">名額 {hold.seats}</p>
+                  <p class="meta">{hold.seats} 位</p>
                   <p class="meta hold-expiry">
                     請於 <time datetime={new Date(hold.expiresAt).toISOString()}>{formatDateTime(hold.expiresAt)}</time> 前確認
                   </p>
@@ -85,11 +79,7 @@ const formatDateTime = (epochMs: number) => `${formatTaipeiDate(epochMs)} ${form
                   <p class="meta hold-countdown" hidden>
                     剩餘 <span class="countdown-text" aria-live="off"></span>
                   </p>
-                  <form method="post">
-                    <input type="hidden" name="intent" value={CONFIRM_INTENT} />
-                    <input type="hidden" name="holdId" value={hold.id} />
-                    <button type="submit" data-confirm>確認訂位</button>
-                  </form>
+                  <a class="continue" data-continue href={`/holds/${hold.id}`}>繼續確認</a>
                 </article>
               </li>
             ))}
@@ -123,7 +113,7 @@ const formatDateTime = (epochMs: number) => `${formatTaipeiDate(epochMs)} ${form
                       {formatTaipeiTime(booking.startsAt)}–{formatTaipeiTime(booking.endsAt)}
                     </span>
                   </p>
-                  <p class="meta">名額 {booking.seats}</p>
+                  <p class="meta">{booking.seats} 位</p>
                   <p class="meta">取消截止時間 {formatDateTime(booking.cancellableUntil)}</p>
                   {cancellation === "cancellable" && (
                     <form method="post">
@@ -148,52 +138,9 @@ const formatDateTime = (epochMs: number) => `${formatTaipeiDate(epochMs)} ${form
 </MemberLayout>
 
 <script>
-  import { formatCountdown, isCountdownExpired } from "../holds/countdown";
+  import { startHoldCountdowns } from "../holds/countdown-client";
 
-  // 起點是伺服器渲染時算出的剩餘毫秒（data-remaining-ms），之後只用單調時間（performance.now）累計經過時間；
-  // 不讀用戶端時鐘的絕對時間，因為到期時鐘在伺服器端（ADR 0011），用戶端時鐘可能偏移。
-  // 取捨：手機休眠時 performance.now() 可能暫停，倒數會落後，但只會比伺服器晚到期（顯示比實際長），
-  // 不會擋掉仍有效的確認；確認能否成立仍完全由伺服器判定
-  const startedAt = performance.now();
-  const announcer = document.querySelector<HTMLElement>("#hold-announcer");
-  const rows = [...document.querySelectorAll<HTMLElement>("article[data-remaining-ms]")].map((row) => ({
-    initialMs: Number(row.dataset.remainingMs),
-    label: row.dataset.label ?? "",
-    countdown: row.querySelector<HTMLElement>(".hold-countdown")!,
-    text: row.querySelector<HTMLElement>(".countdown-text")!,
-    confirm: row.querySelector<HTMLButtonElement>("button[data-confirm]")!,
-    expired: false,
-  }));
-
-  const tick = () => {
-    const elapsed = performance.now() - startedAt;
-    const justExpired: string[] = [];
-    for (const item of rows) {
-      if (item.expired) continue;
-      const remaining = item.initialMs - elapsed;
-      if (!isCountdownExpired(remaining)) {
-        item.text.textContent = formatCountdown(remaining);
-        item.countdown.hidden = false;
-        continue;
-      }
-      item.expired = true;
-      item.confirm.disabled = true;
-      // 約定：帶 data-expired 的按鈕不可被恢復。MemberLayout 的 bfcache 還原（pageshow）會恢復帶 data-submitting 的按鈕，
-      // 但要跳過這顆——否則「送出確認後、伺服器回應前到期，再從 bfcache 返回」會讓已到期的按鈕變回可按
-      item.confirm.dataset.expired = "";
-      // 該列換成純文字；報讀交給頁面上唯一預先存在的 aria-live 區，頁面不自動重新整理
-      item.countdown.textContent = "已到期";
-      item.countdown.classList.add("hold-expired");
-      item.countdown.hidden = false;
-      justExpired.push(`${item.label} 的保留已到期`);
-    }
-    // 同一次 tick 內多筆到期合併成一句，只更新一次播報區
-    if (announcer && justExpired.length > 0) announcer.textContent = justExpired.join("；");
-    if (rows.every((item) => item.expired)) clearInterval(timer);
-  };
-
-  const timer = setInterval(tick, 1000);
-  tick();
+  startHoldCountdowns();
 </script>
 
 <style>
@@ -204,15 +151,14 @@ const formatDateTime = (epochMs: number) => `${formatTaipeiDate(epochMs)} ${form
     font-size: var(--text-md);
     font-weight: 500;
   }
-  .hold-countdown {
-    font-variant-numeric: tabular-nums;
-  }
-  .hold-countdown.hold-expired {
-    color: var(--color-danger);
-    font-weight: 500;
-  }
-  .rule-item form {
+  .rule-item form,
+  .continue {
     margin-top: var(--space-xs);
+  }
+  .continue {
+    justify-self: start;
+    font-size: var(--text-sm);
+    font-weight: 500;
   }
   /* 已取消（含管理者取消）：整列降低對比、時間加刪除線，標籤改虛線框，與已確認的實心標籤分辨 */
   .rule-item.cancelled h3,

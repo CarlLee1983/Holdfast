@@ -15,7 +15,7 @@ interface HoldPostContext {
 }
 
 /**
- * 處理首頁「保留」表單的 POST：未登入導向登入；成功導向會員頁；失敗回可顯示的訊息與狀態碼。
+ * 處理首頁「保留」表單的 POST：未登入導向登入；成功導向確認頁；失敗回可顯示的訊息與狀態碼。
  * 表單解析失敗（例如非表單的 body）當作輸入有誤，不是 500。
  */
 export async function handleHoldPost({
@@ -34,7 +34,7 @@ export async function handleHoldPost({
   }
 
   const result = await app.createHold(member.memberId, holdFormToInput(form));
-  if (result.ok) return { redirect: `/me?held=${result.data.id}`, status: 303 };
+  if (result.ok) return { redirect: `/holds/${result.data.id}`, status: 303 };
 
   const message = describeHoldFailure(result.reason);
   const error = result.reason === "invalid_input" ? withFirstFieldDetail(message, result.fields) : message;

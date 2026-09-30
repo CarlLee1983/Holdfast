@@ -123,8 +123,8 @@ const largest = photo.sources[photo.sources.length - 1];
       });
 
       // 從 bfcache 返回時頁面不會重新載入，被停用的按鈕會一直停用。
-      // 只恢復帶 data-submitting 標記的按鈕：/me 的倒數到期後由另一段 script 停用的「確認訂位」沒有這個標記，維持停用。
-      // 例外約定：帶 data-expired（倒數到期時由 me.astro 設定）的按鈕即使也有 data-submitting，仍不恢復可按，只移除送出標記
+      // 只恢復帶 data-submitting 標記的按鈕：確認頁的倒數到期後（countdown-client.ts）停用的「確認訂位」沒有這個標記，維持停用。
+      // 例外約定：帶 data-expired（倒數到期時由 countdown-client.ts 設定）的按鈕即使也有 data-submitting，仍不恢復可按，只移除送出標記
       window.addEventListener("pageshow", (event) => {
         if (!event.persisted) return;
         for (const button of document.querySelectorAll<HTMLButtonElement | HTMLInputElement>("[data-submitting]")) {

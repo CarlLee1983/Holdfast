@@ -1,11 +1,11 @@
 import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
 import { DOUBLE_SUBMIT_SESSION, NO_JS_SESSION } from "../harness/constants";
-import { holdButton, pickSlot, slotButton, slotInfo } from "../harness/slots";
+import { confirmButton, holdButton, pickSlot, slotButton, slotInfo } from "../harness/slots";
 import { memberSessionCookie } from "../harness/session-cookie";
 
 // 專用會員（見 constants.ts）。會員同時最多 3 筆有效保留、同一時段最多一筆，
-// 這位會員會建立保留的測試有 2 則（送出保留、確認後到期），各用 harness/slots.ts 裡不同資源的時段，
-// 遠低於 3 筆上限；/me 上以資源名稱區分兩筆保留。無 JS 那則用另一位會員。
+// 這位會員會建立保留的測試有 2 則（送出保留、確認頁確認後到期），各用 harness/slots.ts 裡不同資源的時段，
+// 遠低於 3 筆上限。無 JS 那則用另一位會員。
 // 不建立保留的測試不佔額度。各測試不依賴彼此的順序或殘留狀態。
 test.beforeEach(async ({ context }) => {
   await context.addCookies([memberSessionCookie(DOUBLE_SUBMIT_SESSION)]);
@@ -54,8 +54,8 @@ test("送出保留後按鈕立即停用，放行後流程照常完成", async ({
   await expect.poll(() => disabledStates).toEqual([true]);
 
   gate.release("continue");
-  await page.waitForURL(/\/me\?held=\d+$/);
-  await expect(page.getByRole("status")).toContainText("保留成功");
+  await page.waitForURL(/\/holds\/\d+$/);
+  await expect(page.getByRole("heading", { level: 1, name: "確認訂位" })).toBeVisible();
 });
 
 test("伺服器拒絕並重新渲染頁面後，選擇還在，保留按鈕恢復可按", async ({ page }) => {
@@ -92,16 +92,12 @@ test("從 bfcache 還原時只恢復自己停用的按鈕", async ({ page }) => 
   await expect(hold).toBeEnabled();
 });
 
-test("送出確認後才到期：pageshow 還原不會把已到期的確認按鈕恢復可按", async ({ page }) => {
+test("確認頁：送出確認後才到期，pageshow 還原不會把已到期的確認按鈕恢復可按", async ({ page }) => {
   await page.clock.install();
   await (await pickSlot(page, "double-submit-confirm")).click();
-  await expect(page).toHaveURL(/\/me\?held=\d+$/);
+  await expect(page).toHaveURL(/\/holds\/\d+$/);
 
-  // 同一位會員在「大廳用餐」還可能有另一則測試留下的保留，用資源名稱鎖定本則的「包廂」保留
-  const confirm = page
-    .getByRole("region", { name: "我的保留" })
-    .getByRole("article", { name: /包廂/ })
-    .getByRole("button", { name: "確認訂位" });
+  const confirm = confirmButton(page);
   await expect(confirm).toBeEnabled();
   // 在共用 script 之後攔下送出，讓頁面停留在原地：按鈕帶著 data-submitting，模擬「已送出、伺服器尚未回應」
   await page.evaluate(() => document.addEventListener("submit", (event) => event.preventDefault()));
@@ -126,7 +122,7 @@ test.describe("沒有 JavaScript", () => {
     await context.addCookies([memberSessionCookie(NO_JS_SESSION)]);
   });
 
-  test("用「更新」按鈕切換人數與日期，選時段後保留表單照常送出，導向 /me?held= 並看到保留卡片", async ({ page }) => {
+  test("用「更新」按鈕切換人數與日期，選時段後保留表單照常送出，確認頁只有絕對到期時間，確認後成功", async ({ page }) => {
     const { date } = slotInfo("no-js");
     await page.goto("/");
     await page.getByLabel("用餐人數").selectOption("3");
@@ -141,8 +137,15 @@ test.describe("沒有 JavaScript", () => {
     await expect(slotButton(page, "no-js")).toHaveAttribute("aria-pressed", "true");
     await holdButton(page).click();
 
-    await expect(page).toHaveURL(/\/me\?held=\d+$/);
-    await expect(page.getByRole("status")).toContainText("保留成功");
-    await expect(page.getByRole("region", { name: "我的保留" }).getByRole("article", { name: /包廂/ })).toHaveCount(1);
+    await expect(page).toHaveURL(/\/holds\/\d+$/);
+    await expect(page.getByRole("heading", { level: 1, name: "確認訂位" })).toBeVisible();
+    // 倒數由 script 顯示；沒有 JS 時只看得到絕對到期時間
+    await expect(page.getByText(/請於 .+ 前確認/)).toBeVisible();
+    await expect(page.getByText(/^\d{2,}:\d{2}$/)).toBeHidden();
+
+    await confirmButton(page).click();
+    await expect(page).toHaveURL(/\/me\?confirmed=\d+$/);
+    await expect(page.getByRole("status")).toHaveText("訂位成功");
+    await expect(page.getByRole("region", { name: "我的訂位" }).getByRole("article", { name: /包廂/ })).toHaveCount(1);
   });
 });

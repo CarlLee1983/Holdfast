@@ -1,0 +1,185 @@
+---
+import MemberLayout from "../../layouts/MemberLayout.astro";
+import { env } from "cloudflare:workers";
+import { loginUrl } from "../../auth/member";
+import { loadCatalog } from "../../catalog/load-catalog";
+import { formatTaipeiDate, formatTaipeiTime } from "../../catalog/taipei-time";
+import { cancellationRuleText } from "../../holds/cancellation";
+import { handleConfirmPost } from "../../holds/confirm";
+import { holdPageState, reselectUrl } from "../../holds/hold-page";
+import { holdTtlRuleText } from "../../holds/rule-text";
+import { MERCHANT } from "../../merchant/merchant";
+
+export const prerender = false;
+
+const member = Astro.locals.member;
+if (!member) return Astro.redirect(loginUrl(Astro.url), 303);
+
+let formError = "";
+let errorStatus: number | null = null;
+if (Astro.request.method === "POST") {
+  const outcome = await handleConfirmPost({ member, holdId: Astro.params.id, app: env.APP, url: Astro.url });
+  if ("redirect" in outcome) return Astro.redirect(outcome.redirect, outcome.status);
+  formError = outcome.error;
+  errorStatus = outcome.status;
+}
+
+// RPC 回報失敗時直接丟出，不把故障顯示成「保留不存在」
+const result = await env.APP.listMyHolds(member.memberId);
+if (!result.ok) throw new Error(`listMyHolds 失敗：${result.reason}`);
+const catalog = await loadCatalog(env.APP);
+
+const state = holdPageState(result.data, Astro.params.id, catalog);
+// 確認失敗且保留仍有效時沿用失敗的狀態碼；unavailable 一律 404（重新渲染時保留可能剛好過期，同樣是 unavailable）
+if (state.kind === "unavailable") Astro.response.status = 404;
+else if (errorStatus !== null) Astro.response.status = errorStatus;
+
+const now = Date.now();
+const formatDateTime = (epochMs: number) => `${formatTaipeiDate(epochMs)} ${formatTaipeiTime(epochMs)}`;
+---
+
+<MemberLayout title={state.kind === "active" ? "確認訂位" : "保留已過期或不存在"} noindex>
+  {
+    state.kind === "unavailable" ? (
+      <section class="unavailable" aria-labelledby="unavailable-title">
+        <h1 id="unavailable-title">此保留已過期或不存在</h1>
+        {formError && <p role="alert">{formError}</p>}
+        <p class="meta">
+          <a href="/">重新選擇時段</a>
+        </p>
+      </section>
+    ) : (
+      <div
+        class="hold-page"
+        data-remaining-ms={state.hold.expiresAt - now}
+        data-label={`${state.resource.name} ${formatDateTime(state.hold.startsAt)}`}
+      >
+        <header class="head">
+          <h1>確認訂位</h1>
+          {formError && <p role="alert">{formError}</p>}
+          <p class="expiry">
+            請於 <time datetime={new Date(state.hold.expiresAt).toISOString()}>{formatDateTime(state.hold.expiresAt)}</time> 前確認
+          </p>
+          {/* 預設隱藏，由用戶端 script 顯示；沒有 JS 時只剩上面的絕對到期時間 */}
+          <p class="meta hold-countdown" hidden>
+            剩餘 <span class="countdown-text numeric" aria-live="off"></span>
+          </p>
+          <div id="hold-announcer" class="visually-hidden" aria-live="polite"></div>
+        </header>
+
+        <dl class="detail">
+          <dt>日期</dt>
+          <dd class="numeric">{formatTaipeiDate(state.hold.startsAt)}</dd>
+          <dt>時間</dt>
+          <dd class="numeric">
+            {formatTaipeiTime(state.hold.startsAt)}–{formatTaipeiTime(state.hold.endsAt)}
+          </dd>
+          <dt>人數</dt>
+          <dd>{state.hold.seats} 位</dd>
+          <dt>座位</dt>
+          <dd>
+            {state.resource.name}
+            {state.resource.description && <span class="meta">{state.resource.description}</span>}
+          </dd>
+        </dl>
+
+        <p class="as-member">以{member.name}的身分訂位</p>
+
+        <section class="list-section" aria-labelledby="notes-heading">
+          <h2 id="notes-heading">訂位須知</h2>
+          <ul class="rule-list">
+            <li class="rule-item">{holdTtlRuleText(state.resource.holdTtlSeconds)}</li>
+            <li class="rule-item">{cancellationRuleText(state.resource.cancellationCutoffSeconds)}</li>
+            <li class="rule-item">超過取消時限請來電 {MERCHANT.phone}</li>
+          </ul>
+        </section>
+
+        <div class="actions">
+          <form method="post">
+            <button type="submit" data-confirm>確認訂位</button>
+          </form>
+          <a class="reselect" href={reselectUrl(state.hold)}>重新選擇時段</a>
+        </div>
+      </div>
+    )
+  }
+</MemberLayout>
+
+<script>
+  import { startHoldCountdowns } from "../../holds/countdown-client";
+
+  startHoldCountdowns();
+</script>
+
+<style>
+  .unavailable,
+  .hold-page {
+    display: grid;
+    gap: var(--space-lg);
+  }
+  .head {
+    display: grid;
+    gap: var(--space-xs);
+  }
+  .expiry {
+    font-size: var(--text-sm);
+    color: var(--color-muted);
+  }
+  .countdown-text {
+    font-size: var(--text-lg);
+    font-weight: 500;
+    color: var(--color-ink);
+  }
+
+  /* 明細：細線分隔的兩欄列表，時間與日期用襯線數字 */
+  .detail {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    margin: 0;
+    border-top: 1px solid var(--color-rule);
+  }
+  .detail dt,
+  .detail dd {
+    margin: 0;
+    padding-block: var(--space-sm);
+    border-bottom: 1px solid var(--color-rule);
+  }
+  .detail dt {
+    padding-inline-end: var(--space-lg);
+    font-size: var(--text-sm);
+    color: var(--color-muted);
+  }
+  .detail dd {
+    display: grid;
+    gap: var(--space-2xs);
+    font-size: var(--text-md);
+    font-weight: 500;
+  }
+  .detail dd .meta {
+    font-size: var(--text-sm);
+    font-weight: 400;
+  }
+  .as-member {
+    font-size: var(--text-sm);
+  }
+  .list-section {
+    margin-top: 0;
+  }
+  .rule-item {
+    font-size: var(--text-sm);
+  }
+
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-md) var(--space-lg);
+  }
+  .actions button {
+    min-height: var(--control-height-lg);
+    padding-inline: var(--space-xl);
+  }
+  .reselect {
+    font-size: var(--text-sm);
+  }
+</style>

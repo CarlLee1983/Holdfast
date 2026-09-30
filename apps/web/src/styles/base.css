@@ -246,6 +246,15 @@ label {
   border-top: 1px solid var(--color-rule);
 }
 
+/* 保留倒數（DOM 約定見 holds/countdown-client.ts）：到期後由 script 換成「已到期」並加上 hold-expired */
+.hold-countdown {
+  font-variant-numeric: tabular-nums;
+}
+.hold-countdown.hold-expired {
+  color: var(--color-danger);
+  font-weight: 500;
+}
+
 /* 視覺隱藏但保留給輔助科技（例如預先存在的 aria-live 播報區） */
 .visually-hidden {
   position: absolute;
