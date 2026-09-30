@@ -76,3 +76,20 @@ test("每個會員頁都有虛構聲明頁尾，手機與桌機寬度都沒有�
   await context.addCookies([memberSessionCookie()]);
   for (const path of ["/", "/me", "/account/delete"]) await check(path);
 });
+
+test.describe("沒有 JavaScript 的首頁", () => {
+  test.use({ javaScriptEnabled: false });
+
+  test("「更新」按鈕落在底部摘要列後方的視窗高度下，仍然點得到", async ({ page }) => {
+    await page.goto("/");
+    const update = page.getByRole("button", { name: "更新" });
+    const box = await update.boundingBox();
+    expect(box).not.toBeNull();
+    // 讓按鈕整顆留在視窗內、但位於固定摘要列的範圍：瀏覽器與 Playwright 都認為它「已在畫面上」而不捲動
+    await page.setViewportSize({ width: 1280, height: Math.ceil(box!.y + box!.height + 8) });
+    await page.goto("/");
+
+    await update.click({ timeout: 5_000 });
+    await expect(page).toHaveURL(/[?&]date=/);
+  });
+});
