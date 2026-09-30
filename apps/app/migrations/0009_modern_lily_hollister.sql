@@ -1,0 +1,1 @@
+ALTER TABLE `holds` ADD `cancellation_reason` text;

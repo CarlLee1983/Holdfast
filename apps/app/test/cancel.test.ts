@@ -229,6 +229,7 @@ describe("cancelBooking", () => {
         status: "confirmed",
         cancelledAt: null,
         cancelledBy: null,
+        cancellationReason: null,
         cancellableUntil: CUTOFF,
       },
     ]);

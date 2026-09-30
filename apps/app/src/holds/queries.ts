@@ -48,6 +48,8 @@ export interface MyBooking extends BookingRecord, SlotSummary {
   status: typeof CONFIRMED | typeof CANCELLED;
   cancelledAt: number | null;
   cancelledBy: "admin" | "member" | null;
+  /** 管理者取消時留給會員的原因；沒填或會員自己取消為 null。 */
+  cancellationReason: string | null;
   /** 取消截止時刻（UTC epoch 毫秒）：`now <= cancellableUntil` 才能取消。 */
   cancellableUntil: number;
 }
@@ -250,6 +252,7 @@ export async function selectBookings(db: DrizzleD1Database, memberId: string): P
       status: holds.status,
       cancelledAt: holds.cancelledAt,
       cancelledBy: holds.cancelledBy,
+      cancellationReason: holds.cancellationReason,
       resourceName: resources.name,
       startsAt: slots.startsAt,
       endsAt: slots.endsAt,

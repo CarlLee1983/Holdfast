@@ -95,8 +95,8 @@ describe("listAgendaForAdmin 名單與占用", () => {
     expect(slot!.bookings).toEqual([{ id: booking, memberName: "alice", seats: 2 }]);
     expect(slot!.holds).toEqual([{ id: active, memberName: "bob", seats: 3, expiresAt: NOW + 60_000 }]);
     expect(slot!.cancelledBookings).toEqual([
-      { id: memberCancelled, memberName: "carol", seats: 1, cancelledBy: "member", cancelledAt: NOW - 1000 },
-      { id: adminCancelled, memberName: "alice", seats: 4, cancelledBy: "admin", cancelledAt: NOW - 500 },
+      { id: memberCancelled, memberName: "carol", seats: 1, cancelledBy: "member", cancelledAt: NOW - 1000, cancellationReason: null },
+      { id: adminCancelled, memberName: "alice", seats: 4, cancelledBy: "admin", cancelledAt: NOW - 500, cancellationReason: null },
     ]);
     expect(slot).toMatchObject({ capacity: 10, occupied: 5, remainingSeats: 5, overcommitted: false });
   });
@@ -109,7 +109,7 @@ describe("listAgendaForAdmin 名單與占用", () => {
     const [slot] = await agenda({ from: DAY, to: DAY + 24 * HOUR });
 
     expect(slot!.cancelledBookings).toEqual([
-      { id: legacy, memberName: null, seats: 2, cancelledBy: null, cancelledAt: null },
+      { id: legacy, memberName: null, seats: 2, cancelledBy: null, cancelledAt: null, cancellationReason: null },
     ]);
   });
 

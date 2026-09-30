@@ -59,7 +59,7 @@ describe("admin holds and bookings", () => {
     await insertUser("m1");
     const first = await hold("m1", "first");
     expect((await app.confirmHold("m1", { holdId: first })).ok).toBe(true);
-    setNow(NOW + HOUR + 1000);
+    setNow(NOW + HOUR - 1000);
     const before = await app.listSlots(resourceId);
     expect(before.ok && before.data[0]?.remainingSeats).toBe(0);
     const cancelled = await app.cancelBookingForAdmin(jwt, { slotId, bookingId: first });
@@ -67,7 +67,7 @@ describe("admin holds and bookings", () => {
     const after = await app.listSlots(resourceId);
     expect(after.ok && after.data[0]?.remainingSeats).toBe(2);
     const bookings = await app.listMyBookings("m1");
-    expect(bookings.ok && bookings.data).toMatchObject([{ id: first, status: "cancelled", cancelledAt: NOW + HOUR + 1000, cancelledBy: "admin" }]);
+    expect(bookings.ok && bookings.data).toMatchObject([{ id: first, status: "cancelled", cancelledAt: NOW + HOUR - 1000, cancelledBy: "admin" }]);
     expect(await app.confirmHold("m1", { holdId: first })).toEqual({ ok: false, reason: "booking_cancelled" });
     const rows = await auditRows();
     expect(rows).toHaveLength(1);
@@ -99,5 +99,87 @@ describe("admin holds and bookings", () => {
     expect(await app.cancelBookingForAdmin(jwt, { slotId, bookingId })).toMatchObject({ ok: true });
     expect(await app.cancelBookingForAdmin(jwt, { slotId: otherSlotId, bookingId })).toEqual({ ok: false, reason: "booking_not_found" });
     expect(await auditRows()).toHaveLength(1);
+  });
+
+  describe("cancellation reason and slot start", () => {
+    async function confirmed(memberId = "m1") {
+      await insertUser(memberId);
+      const bookingId = await hold(memberId, `key-${memberId}`);
+      expect((await app.confirmHold(memberId, { holdId: bookingId })).ok).toBe(true);
+      return bookingId;
+    }
+
+    it("cancels one millisecond before the slot starts", async () => {
+      const bookingId = await confirmed();
+      setNow(NOW + HOUR - 1);
+      expect(await app.cancelBookingForAdmin(jwt, { slotId, bookingId })).toEqual({ ok: true, data: { id: bookingId, slotId, seats: 2 } });
+    });
+
+    it("refuses exactly at the slot start and leaves the booking and audit untouched", async () => {
+      const bookingId = await confirmed();
+      setNow(NOW + HOUR);
+      expect(await app.cancelBookingForAdmin(jwt, { slotId, bookingId, reason: "x" })).toEqual({ ok: false, reason: "slot_started" });
+      expect(await app.listMyBookings("m1")).toMatchObject({ ok: true, data: [{ id: bookingId, status: "confirmed", cancellationReason: null }] });
+      expect(await auditRows()).toHaveLength(0);
+    });
+
+    it("judges by the high-water mark, not the request clock", async () => {
+      const bookingId = await confirmed();
+      // 另一個請求已把高水位推過開始時間；本請求的 now 較早也不能取消
+      await env.DB.prepare("INSERT INTO clock (id, hwm) VALUES (1, ?1) ON CONFLICT (id) DO UPDATE SET hwm = max(hwm, ?1)").bind(NOW + HOUR + 5).run();
+      expect(await app.cancelBookingForAdmin(jwt, { slotId, bookingId })).toEqual({ ok: false, reason: "slot_started" });
+      expect(await auditRows()).toHaveLength(0);
+    });
+
+    it("uses one clock for cancelled_at and the audit row when the high-water mark is ahead", async () => {
+      const bookingId = await confirmed();
+      const hwm = NOW + HOUR - 500;
+      await env.DB.prepare("INSERT INTO clock (id, hwm) VALUES (1, ?1) ON CONFLICT (id) DO UPDATE SET hwm = max(hwm, ?1)").bind(hwm).run();
+      expect(await app.cancelBookingForAdmin(jwt, { slotId, bookingId })).toMatchObject({ ok: true });
+      const held = await env.DB.prepare("SELECT cancelled_at AS cancelledAt FROM holds WHERE id = ?").bind(bookingId).first<{ cancelledAt: number }>();
+      expect(held!.cancelledAt).toBe(hwm);
+      expect((await auditRows())[0]!.at).toBe(hwm);
+    });
+
+    it("stores the reason, shows it to the member, and records it in the audit detail", async () => {
+      const bookingId = await confirmed();
+      expect(await app.cancelBookingForAdmin(jwt, { slotId, bookingId, reason: "  店休  " })).toMatchObject({ ok: true });
+      expect(await app.listMyBookings("m1")).toMatchObject({ ok: true, data: [{ id: bookingId, cancellationReason: "店休" }] });
+      const listed = await app.listSlotHoldsAndBookingsForAdmin(jwt, { slotId });
+      expect(listed.ok && listed.data.holdsAndBookings[0]).toMatchObject({ cancellationReason: "店休" });
+      const rows = await auditRows();
+      expect(rows).toHaveLength(1);
+      expect(JSON.parse(rows[0]!.detail)).toEqual({ reason: "店休" });
+    });
+
+    it("stores null and audits reason null when omitted or whitespace-only", async () => {
+      const first = await confirmed("m1");
+      await app.cancelBookingForAdmin(jwt, { slotId, bookingId: first });
+      const second = await confirmed("m2");
+      await app.cancelBookingForAdmin(jwt, { slotId, bookingId: second, reason: "   " });
+      expect(await app.listMyBookings("m1")).toMatchObject({ ok: true, data: [{ cancellationReason: null }] });
+      expect(await app.listMyBookings("m2")).toMatchObject({ ok: true, data: [{ cancellationReason: null }] });
+      expect((await auditRows()).map((row) => JSON.parse(row.detail))).toEqual([{ reason: null }, { reason: null }]);
+    });
+
+    it("limits the reason to 200 characters", async () => {
+      const bookingId = await confirmed();
+      expect(await app.cancelBookingForAdmin(jwt, { slotId, bookingId, reason: "字".repeat(201) })).toMatchObject({
+        ok: false,
+        reason: "invalid_input",
+        fields: { reason: ["取消原因不可超過 200 個字"] },
+      });
+      expect(await auditRows()).toHaveLength(0);
+      expect(await app.cancelBookingForAdmin(jwt, { slotId, bookingId, reason: "字".repeat(200) })).toMatchObject({ ok: true });
+    });
+
+    it("keeps repeated cancellation idempotent and keeps the first reason", async () => {
+      const bookingId = await confirmed();
+      await app.cancelBookingForAdmin(jwt, { slotId, bookingId, reason: "第一次" });
+      setNow(NOW + HOUR + 1000);
+      expect(await app.cancelBookingForAdmin(jwt, { slotId, bookingId, reason: "第二次" })).toMatchObject({ ok: true });
+      expect(await app.listMyBookings("m1")).toMatchObject({ ok: true, data: [{ cancellationReason: "第一次" }] });
+      expect(await auditRows()).toHaveLength(1);
+    });
   });
 });

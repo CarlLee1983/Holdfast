@@ -37,6 +37,8 @@ export const holds = sqliteTable(
     cancelledAt: integer("cancelled_at"),
     /** 誰取消的：會員自己（#10）或管理者（#12）；未取消為 null。 */
     cancelledBy: text("cancelled_by").$type<"admin" | "member">(),
+    /** 管理者取消時給會員看的原因（純文字）；會員自行取消或未填為 null。 */
+    cancellationReason: text("cancellation_reason"),
   },
   (t) => [
     // 加總已占用名額的子查詢用（ADR 0004）

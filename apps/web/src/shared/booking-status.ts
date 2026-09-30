@@ -10,7 +10,7 @@ export function holdOrBookingStatus(value: HoldOrBookingState): string {
     case "expired": return "已過期";
     case "released": return "已釋放";
     case "confirmed": return "已訂位";
-    case "cancelled": return value.cancelledBy === "admin" ? "管理者已取消" : "已取消";
+    case "cancelled": return value.cancelledBy === "admin" ? "店家已取消" : "已取消";
     default: {
       const unreachable: never = value.status;
       return unreachable;

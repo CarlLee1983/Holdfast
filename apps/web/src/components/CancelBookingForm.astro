@@ -1,0 +1,21 @@
+---
+// 管理者取消訂位的表單，時段詳情頁與日程表共用；防重複送出由 AdminLayout 的事件委派涵蓋
+interface Props {
+  bookingId: number;
+  /** 日程表沒有固定時段，靠表單帶時段編號；時段詳情頁由網址決定，不需要。 */
+  slotId?: number;
+}
+
+const { bookingId, slotId } = Astro.props;
+---
+
+<form method="post" class="cancel-booking">
+  <input type="hidden" name="bookingId" value={bookingId} />
+  {slotId !== undefined && <input type="hidden" name="slotId" value={slotId} />}
+  <label>
+    取消原因（選填，會員看得到）
+    {/* 200 與 App 的 MAX_CANCELLATION_REASON_LENGTH 對應（兩個 Worker 不共用常數，改一邊要改另一邊） */}
+    <input type="text" name="reason" maxlength="200" />
+  </label>
+  <button type="submit">取消訂位</button>
+</form>
