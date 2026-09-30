@@ -10,6 +10,7 @@ describe("建立保留失敗原因轉成訊息", () => {
     ["active_hold_limit_reached", "你持有的有效保留已達上限，請先確認或等待到期後再保留"],
     ["slot_overcommitted", "這個時段目前無法接受新的保留"],
     ["slot_not_found", "找不到這個時段"],
+    ["resource_retired", "這個資源已停用，無法建立新的保留"],
     ["idempotency_key_conflict", "這個保留請求已送出過，請重新整理頁面後再試"],
     ["invalid_input", "輸入有誤"],
   ])("%s 有具名的訊息", (reason, text) => {

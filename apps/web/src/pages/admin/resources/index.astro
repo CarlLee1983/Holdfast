@@ -44,12 +44,13 @@ if (unauthorized || (resources && !resources.ok && resources.reason === "unautho
             <div class="table-scroll">
               <table>
                 <thead>
-                  <tr><th>名稱</th><th>保留期限（秒）</th><th>單筆名額上限</th><th>取消截止（秒）</th><th></th></tr>
+                  <tr><th>名稱</th><th>狀態</th><th>保留期限（秒）</th><th>單筆名額上限</th><th>取消截止（秒）</th><th></th></tr>
                 </thead>
                 <tbody>
                   {resources.data.map((r) => (
                     <tr>
                       <td>{r.name}</td>
+                      <td>{r.retiredAt === null ? "啟用中" : "已停用"}</td>
                       <td>{r.holdTtlSeconds}</td>
                       <td>{r.seatsPerHold}</td>
                       <td>{r.cancellationCutoffSeconds}</td>
