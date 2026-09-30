@@ -43,9 +43,31 @@ body {
   color: var(--color-on-brand);
   border-bottom-color: var(--color-on-brand);
 }
+.admin-omni-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  background: var(--color-brand-2);
+  color: var(--color-on-brand);
+  border: 1px solid var(--color-on-brand-muted);
+  border-radius: var(--radius);
+  padding: 0.15rem var(--space-xs);
+  font-size: var(--text-2xs);
+  cursor: pointer;
+  min-height: auto;
+}
+.admin-omni-btn kbd {
+  background: var(--color-brand);
+  border: 1px solid var(--color-on-brand-muted);
+  border-radius: var(--radius);
+  padding: 0 0.25rem;
+  font-family: inherit;
+  font-size: 0.7em;
+}
 .admin-bar .admin-external {
   margin-inline-start: auto;
 }
+
 
 /* ---------- 內容 ---------- */
 main {
@@ -283,3 +305,537 @@ td a {
   gap: var(--space-2xs) var(--space-sm);
   min-width: 0;
 }
+
+/* ---------- 互動抽屜 (Admin Drawer) ---------- */
+.admin-drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  display: flex;
+  justify-content: flex-end;
+  pointer-events: none;
+  visibility: hidden;
+  transition: visibility 0.2s;
+}
+.admin-drawer.is-open {
+  pointer-events: auto;
+  visibility: visible;
+}
+.admin-drawer-backdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--color-scrim);
+  opacity: 0;
+  transition: opacity 0.2s var(--ease-out);
+}
+.admin-drawer.is-open .admin-drawer-backdrop {
+  opacity: 1;
+}
+.admin-drawer-panel {
+  position: relative;
+  width: 100%;
+  max-width: 28rem;
+  height: 100%;
+  background: var(--color-paper);
+  border-left: 1px solid var(--color-rule);
+  transform: translateX(100%);
+  transition: transform 0.25s var(--ease-out);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: var(--space-md);
+  gap: var(--space-md);
+}
+.admin-drawer.is-open .admin-drawer-panel {
+  transform: translateX(0);
+}
+.admin-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--color-rule);
+  padding-bottom: var(--space-xs);
+}
+.admin-drawer-header h2 {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-size: var(--text-base);
+}
+.admin-drawer-close {
+  background: transparent;
+  border: 1px solid var(--color-rule);
+  color: var(--color-ink);
+  cursor: pointer;
+  padding: var(--space-2xs) var(--space-xs);
+  min-height: auto;
+  line-height: 1;
+}
+.admin-drawer-body {
+  display: grid;
+  gap: var(--space-md);
+  font-size: var(--text-sm);
+}
+.drawer-section {
+  display: grid;
+  gap: var(--space-xs);
+  border-bottom: 1px solid var(--color-rule);
+  padding-bottom: var(--space-sm);
+}
+.drawer-section:last-of-type {
+  border-bottom: 0;
+}
+.drawer-section h4 {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.drawer-header-info h3 {
+  margin: 0;
+  font-size: var(--text-md);
+}
+.drawer-time {
+  font-size: var(--text-base);
+  font-weight: 700;
+  margin: var(--space-2xs) 0 0;
+}
+.drawer-capacity-bar {
+  display: grid;
+  gap: var(--space-2xs);
+  margin-top: var(--space-xs);
+}
+.capacity-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--text-xs);
+}
+.progress-track {
+  width: 100%;
+  height: 6px;
+  background: var(--color-paper-2);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.slot-progress-bar {
+  height: 100%;
+  background: var(--color-brand);
+  transition: width 0.2s var(--ease-out);
+}
+.drawer-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-xs);
+}
+.drawer-list-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs);
+  background: var(--color-paper-2);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius);
+  font-size: var(--text-xs);
+}
+.drawer-list-item.is-held {
+  border-style: dashed;
+}
+.drawer-list-item.is-cancelled {
+  opacity: 0.75;
+}
+.drawer-list-item .item-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-xs);
+}
+.seat-badge {
+  font-size: var(--text-2xs);
+  color: var(--color-muted);
+}
+.btn-cancel-booking {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+  background: transparent;
+  cursor: pointer;
+  padding: var(--space-2xs) var(--space-xs);
+  min-height: auto;
+  font-size: var(--text-2xs);
+}
+.drawer-footer {
+  margin-top: auto;
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--color-rule);
+  font-size: var(--text-xs);
+}
+
+/* ---------- 原生彈窗 (Native Dialog) ---------- */
+dialog.admin-dialog {
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius);
+  background: var(--color-paper);
+  color: var(--color-ink);
+  padding: var(--space-lg);
+  max-width: 28rem;
+  width: 90%;
+  box-shadow: none;
+}
+dialog.admin-dialog::backdrop {
+  background: var(--color-scrim);
+}
+.dialog-form {
+  display: grid;
+  gap: var(--space-sm);
+  max-width: none;
+}
+.dialog-form h3 {
+  margin: 0;
+  font-size: var(--text-md);
+}
+.dialog-subtext {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+}
+.cancel-target-desc {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  padding: var(--space-2xs) var(--space-xs);
+  background: var(--color-paper-2);
+  border: 1px solid var(--color-rule);
+}
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-xs);
+  margin-top: var(--space-xs);
+}
+.dialog-actions button.danger {
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+  color: var(--color-on-brand);
+}
+
+/* ---------- 輕量通知 (Toast) ---------- */
+.admin-toast-container {
+  position: fixed;
+  bottom: var(--space-lg);
+  right: var(--space-lg);
+  z-index: 600;
+  display: grid;
+  gap: var(--space-xs);
+  pointer-events: none;
+}
+.admin-toast {
+  pointer-events: auto;
+  background: var(--color-brand);
+  color: var(--color-on-brand);
+  padding: var(--space-xs) var(--space-md);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.2s var(--ease-out), transform 0.2s var(--ease-out);
+}
+.admin-toast.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ---------- 日程表矩陣時間軸看板 (Agenda Matrix) ---------- */
+.agenda-view-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+.view-tabs {
+  display: inline-flex;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.view-tab-btn {
+  background: var(--color-paper);
+  border: 0;
+  border-radius: 0;
+  padding: var(--space-2xs) var(--space-sm);
+  color: var(--color-muted);
+  cursor: pointer;
+  font-size: var(--text-xs);
+  text-decoration: none;
+}
+.view-tab-btn.is-active,
+.view-tab-btn:hover {
+  background: var(--color-paper-2);
+  color: var(--color-ink);
+}
+.matrix-container {
+  display: grid;
+  gap: var(--space-md);
+  margin-top: var(--space-xs);
+}
+.matrix-resource-block {
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius);
+  padding: var(--space-sm);
+  background: var(--color-paper);
+}
+.matrix-resource-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-xs);
+  border-bottom: 1px solid var(--color-rule);
+  padding-bottom: var(--space-2xs);
+}
+.matrix-resource-title h3 {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+.matrix-slots-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+  gap: var(--space-xs);
+}
+.slot-card {
+  position: relative;
+  display: grid;
+  gap: var(--space-2xs);
+  padding: var(--space-xs);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius);
+  background: var(--color-paper-2);
+  text-decoration: none;
+  color: var(--color-ink);
+  cursor: pointer;
+  text-align: left;
+}
+.slot-card:hover {
+  border-color: var(--color-brand);
+}
+.slot-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-xs);
+}
+.slot-card-time {
+  font-weight: 700;
+  font-size: var(--text-sm);
+}
+.slot-card-counts {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+}
+.slot-card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2xs);
+  min-height: 1.25rem;
+}
+.tag-overcommitted {
+  display: none;
+}
+.tag-overcommitted.is-visible {
+  display: inline-block;
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+/* ---------- 排程週曆 (Schedule Week Calendar) ---------- */
+.schedule-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  font-size: var(--text-sm);
+}
+.schedule-nav h2 {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.schedule-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+}
+.schedule-table th,
+.schedule-table td {
+  border: 1px solid var(--color-rule);
+  padding: var(--space-2xs);
+  vertical-align: top;
+  min-width: 9rem;
+}
+.schedule-table th {
+  background: var(--color-paper-2);
+  text-align: center;
+  font-weight: 700;
+}
+.schedule-resource-name {
+  font-weight: 700;
+  font-size: var(--text-sm);
+  background: var(--color-paper-2);
+  width: 8rem;
+  min-width: 8rem;
+}
+.schedule-day-cell {
+  display: grid;
+  gap: var(--space-2xs);
+  min-height: 4rem;
+}
+.schedule-slot-pill {
+  display: block;
+  padding: var(--space-2xs);
+  background: var(--color-paper-2);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius);
+  text-decoration: none;
+  color: var(--color-ink);
+  font-size: var(--text-2xs);
+}
+.schedule-slot-pill:hover {
+  border-color: var(--color-brand);
+}
+.schedule-slot-pill.is-full {
+  background: var(--color-paper);
+  border-left: 3px solid var(--color-brand);
+}
+.schedule-add-btn {
+  display: block;
+  text-align: center;
+  padding: var(--space-2xs);
+  font-size: var(--text-2xs);
+  color: var(--color-muted);
+  text-decoration: none;
+  border: 1px dashed var(--color-rule);
+  border-radius: var(--radius);
+  margin-top: auto;
+}
+.schedule-add-btn:hover {
+  color: var(--color-ink);
+  border-color: var(--color-ink);
+}
+
+/* ---------- 全域會員快查 (Omni Search) ---------- */
+dialog.omni-search-dialog {
+  max-width: 44rem;
+  width: 90%;
+  padding: 0;
+  overflow: hidden;
+}
+.omni-dialog-shell {
+  display: flex;
+  flex-direction: column;
+  max-height: 80vh;
+}
+.omni-search-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--color-rule);
+  background: var(--color-paper-2);
+}
+.omni-search-header input[type="search"] {
+  flex: 1;
+  border: 1px solid var(--color-rule);
+  background: var(--color-paper);
+}
+.omni-search-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  min-height: 18rem;
+  max-height: 28rem;
+  overflow: hidden;
+}
+@media (max-width: 40rem) {
+  .omni-search-split {
+    grid-template-columns: 1fr;
+  }
+}
+.omni-search-results {
+  padding: var(--space-sm);
+  overflow-y: auto;
+  border-right: 1px solid var(--color-rule);
+}
+.omni-results-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2xs);
+}
+.omni-member-item {
+  width: 100%;
+  text-align: left;
+  background: var(--color-paper);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius);
+  padding: var(--space-xs);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.omni-member-item:hover,
+.omni-member-item:focus {
+  border-color: var(--color-brand);
+  background: var(--color-paper-2);
+}
+.omni-member-preview {
+  padding: var(--space-sm);
+  overflow-y: auto;
+  background: var(--color-paper);
+}
+.member-preview-card {
+  display: grid;
+  gap: var(--space-sm);
+}
+.preview-header h4 {
+  margin: 0;
+  font-size: var(--text-base);
+}
+.preview-section h5 {
+  margin: 0 0 var(--space-2xs) 0;
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+  text-transform: uppercase;
+}
+.preview-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-xs);
+}
+.preview-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-xs);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius);
+  background: var(--color-paper-2);
+  font-size: var(--text-xs);
+}
+.preview-footer {
+  margin-top: var(--space-xs);
+  padding-top: var(--space-xs);
+  border-top: 1px solid var(--color-rule);
+  font-size: var(--text-xs);
+}
+
+

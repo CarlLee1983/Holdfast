@@ -3,6 +3,7 @@ import "../styles/tokens.css";
 import "../styles/base.css";
 import "../styles/admin.css";
 import FontLinks from "../components/FontLinks.astro";
+import AdminOmniSearch from "../components/AdminOmniSearch.astro";
 
 interface Props {
   title: string;
@@ -12,10 +13,12 @@ const { title } = Astro.props;
 // 導覽列標出目前所在的區塊；路徑等於 href 或以 prefixes 的前綴比對（時段頁屬於資源區塊），之後新增區塊在這裡加一列
 const sections = [
   { label: "日程表", href: "/admin", prefixes: [] },
+  { label: "排程", href: "/admin/schedule", prefixes: ["/admin/schedule"] },
   { label: "資源", href: "/admin/resources", prefixes: ["/admin/resources", "/admin/slots"] },
   { label: "查會員", href: "/admin/members", prefixes: ["/admin/members"] },
   { label: "稽核紀錄", href: "/admin/audit", prefixes: ["/admin/audit"] },
 ];
+
 // `/admin/` 與 `/admin` 視為同一頁
 const pathname = Astro.url.pathname.replace(/\/+$/, "") || "/";
 // 剛好在區塊頁本身是 "page"；在區塊底下的子頁是 "true"（仍屬於該區塊，但不是當前這一頁）
@@ -37,6 +40,9 @@ const current = (href: string, prefixes: string[]) =>
       <nav class="admin-bar" aria-label="管理後台導覽">
         <span class="admin-brand">Holdfast 管理後台</span>
         {sections.map(({ label, href, prefixes }) => <a href={href} aria-current={current(href, prefixes)}>{label}</a>)}
+        <button type="button" class="admin-omni-btn" id="open-member-search" aria-label="快速搜尋會員">
+          🔍 搜尋會員 <kbd>/</kbd>
+        </button>
         <a class="admin-external" href="/">公開頁面</a>
       </nav>
       <main>
@@ -44,6 +50,7 @@ const current = (href: string, prefixes: string[]) =>
         <slot />
       </main>
     </div>
+    <AdminOmniSearch />
     <script>
       import { guardDoubleSubmit } from "../shared/double-submit-client";
 
@@ -51,3 +58,4 @@ const current = (href: string, prefixes: string[]) =>
     </script>
   </body>
 </html>
+

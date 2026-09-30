@@ -1,0 +1,23 @@
+---
+// 全域查會員彈窗（可透過快捷鍵 / 或導覽列呼叫）
+---
+
+<dialog id="omni-member-search-dialog" class="admin-dialog omni-search-dialog">
+  <div class="omni-dialog-shell">
+    <div class="omni-search-header">
+      <input type="search" id="omni-search-input" placeholder="輸入會員姓名或 email 搜尋..." autocomplete="off" />
+      <button type="button" class="dialog-close-btn" aria-label="關閉">✕</button>
+    </div>
+    <div class="omni-search-split">
+      <div id="omni-search-results" class="omni-search-results">
+        <p class="meta">請輸入至少一個字元開始搜尋...</p>
+      </div>
+      <div id="omni-member-preview" class="omni-member-preview" style="display:none;"></div>
+    </div>
+  </div>
+</dialog>
+
+<script>
+  import { initOmniMemberSearch } from "../admin/admin-omni-search-client";
+  initOmniMemberSearch();
+</script>

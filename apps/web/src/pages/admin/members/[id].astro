@@ -5,9 +5,10 @@ import { readAccessJwt } from "../../../admin/access-jwt";
 import { handleCancelBookingPost } from "../../../admin/cancel-booking";
 import { describeFailure, failureStatus } from "../../../admin/reasons";
 import { slotCancellable } from "../../../admin/slot-cancellable";
-import { formatTaipeiDate, formatTaipeiDateTime, formatTaipeiTime } from "../../../catalog/taipei-time";
+import { formatTaipeiDate, formatTaipeiDateTime, formatTaipeiTime, taipeiDateKey } from "../../../catalog/taipei-time";
 import AccessDenied from "../../../components/AccessDenied.astro";
 import CancelBookingForm from "../../../components/CancelBookingForm.astro";
+import AdminSlotDrawer from "../../../components/AdminSlotDrawer.astro";
 import AdminLayout from "../../../layouts/AdminLayout.astro";
 
 export const prerender = false;
@@ -26,6 +27,12 @@ if (Astro.request.method === "POST") {
     successUrl: (id) => `${memberHref}?cancelled=${id}`,
   });
   if ("redirect" in outcome) return Astro.redirect(outcome.redirect, outcome.status);
+  if ("json" in outcome) {
+    return new Response(JSON.stringify(outcome.json), {
+      status: outcome.status,
+      headers: { "content-type": "application/json" },
+    });
+  }
   cancelError = outcome.error;
   unauthorized = outcome.status === 403;
   Astro.response.status = outcome.status;
@@ -38,6 +45,26 @@ else if (result && !result.ok) Astro.response.status = failureStatus(result.reas
 
 const detail = result?.ok ? result.data : null;
 const loadError = result && !result.ok && !unauthorized ? describeFailure(result).message : null;
+
+if (Astro.request.headers.get("accept")?.includes("application/json")) {
+  if (unauthorized) {
+    return new Response(JSON.stringify({ ok: false, error: "unauthorized" }), {
+      status: 403,
+      headers: { "content-type": "application/json" },
+    });
+  }
+  if (result && !result.ok) {
+    return new Response(JSON.stringify({ ok: false, error: loadError }), {
+      status: failureStatus(result.reason),
+      headers: { "content-type": "application/json" },
+    });
+  }
+  return new Response(JSON.stringify({ ok: true, data: detail }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+}
+
 const now = Date.now();
 const cancelled = Astro.url.searchParams.has("cancelled");
 const slotLabel = (r: { startsAt: number; endsAt: number }) =>
@@ -67,6 +94,7 @@ const slotLabel = (r: { startsAt: number; endsAt: number }) =>
               {detail.bookings.map((b) => (
                 <li>
                   <a href={`/admin/slots/${b.slotId}`}>{slotLabel(b)}</a>
+                  <a class="tag tag--quiet" href={`/admin?date=${taipeiDateKey(b.startsAt)}`}>前往當日看板</a>
                   <span>{b.resourceName}</span>
                   <span>{b.seats} 位</span>
                   {slotCancellable(b.startsAt, now) && <CancelBookingForm bookingId={b.id} slotId={b.slotId} />}
@@ -82,6 +110,7 @@ const slotLabel = (r: { startsAt: number; endsAt: number }) =>
               {detail.holds.map((h) => (
                 <li>
                   <a href={`/admin/slots/${h.slotId}`}>{slotLabel(h)}</a>
+                  <a class="tag tag--quiet" href={`/admin?date=${taipeiDateKey(h.startsAt)}`}>前往當日看板</a>
                   <span>{h.resourceName}</span>
                   <span>{h.seats} 位</span>
                   <span class="tag tag--quiet">保留中</span>
@@ -91,7 +120,9 @@ const slotLabel = (r: { startsAt: number; endsAt: number }) =>
             </ul>
           </>
         )}
+        <AdminSlotDrawer />
       </>
     )
   }
 </AdminLayout>
+

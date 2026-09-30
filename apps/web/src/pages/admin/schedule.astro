@@ -1,0 +1,167 @@
+---
+// 管理後台：週曆排程總覽與管理
+import { env } from "cloudflare:workers";
+import { readAccessJwt } from "../../admin/access-jwt";
+import { handleCancelBookingPost } from "../../admin/cancel-booking";
+import { adjacentWeekKey, getWeekDays, startOfWeekMonday, taipeiWeekRange } from "../../admin/schedule-date";
+import { groupScheduleByResourceAndDay } from "../../admin/schedule-matrix";
+import { parseResourceParam } from "../../admin/agenda-date";
+import { formatTaipeiTime, taipeiDateKey } from "../../catalog/taipei-time";
+import AccessDenied from "../../components/AccessDenied.astro";
+import AdminSlotDrawer from "../../components/AdminSlotDrawer.astro";
+import AdminLayout from "../../layouts/AdminLayout.astro";
+
+export const prerender = false;
+
+const jwt = readAccessJwt(Astro.request, env, import.meta.env.DEV);
+const params = Astro.url.searchParams;
+const now = Date.now();
+const todayKey = taipeiDateKey(now);
+const thisWeekKey = startOfWeekMonday(todayKey);
+const rawWeek = params.get("week");
+const weekKey = rawWeek && /^\d{4}-\d{2}-\d{2}$/.test(rawWeek) ? startOfWeekMonday(rawWeek) : thisWeekKey;
+const resourceId = parseResourceParam(params.get("resource"));
+const weekRange = taipeiWeekRange(weekKey);
+
+const weekHref = (key: string) =>
+  `/admin/schedule?week=${key}${resourceId === undefined ? "" : `&resource=${resourceId}`}`;
+
+let cancelError = "";
+if (Astro.request.method === "POST") {
+  const outcome = await handleCancelBookingPost({
+    jwt,
+    request: Astro.request,
+    app: env.APP,
+    successUrl: (id) => `${weekHref(weekKey)}&cancelled=${id}`,
+  });
+  if ("redirect" in outcome) return Astro.redirect(outcome.redirect, outcome.status);
+  if ("json" in outcome) {
+    return new Response(JSON.stringify(outcome.json), {
+      status: outcome.status,
+      headers: { "content-type": "application/json" },
+    });
+  }
+  cancelError = outcome.error;
+  Astro.response.status = outcome.status;
+}
+
+const [agenda, resources] = await Promise.all([
+  env.APP.listAgendaForAdmin(jwt, { ...weekRange, resourceId }),
+  env.APP.listResourcesForAdmin(jwt),
+]);
+
+const unauthorized =
+  (!agenda.ok && agenda.reason === "unauthorized") || (!resources.ok && resources.reason === "unauthorized");
+const agendaFailed = !unauthorized && !agenda.ok;
+const resourcesFailed = !unauthorized && !resources.ok;
+if (unauthorized) Astro.response.status = 403;
+else if (agendaFailed) Astro.response.status = 500;
+
+const slots = agenda.ok ? agenda.data : [];
+const resourceList = resources.ok ? resources.data : [];
+const weekDays = getWeekDays(weekKey);
+const targetResources = resourceId !== undefined ? resourceList.filter((r) => r.id === resourceId) : resourceList;
+const scheduleRows = groupScheduleByResourceAndDay(slots, targetResources, weekDays);
+---
+
+<AdminLayout title="排程週曆">
+  {
+    unauthorized ? (
+      <AccessDenied />
+    ) : (
+      <>
+        <nav class="schedule-nav" aria-label="切換週">
+          <a href={weekHref(adjacentWeekKey(weekKey, -1))}>前一週</a>
+          <div class="agenda-date-heading">
+            <h2>{weekDays[0]!.label} – {weekDays[6]!.label}</h2>
+            {weekKey !== thisWeekKey && (
+              <a class="tag tag--quiet" href={weekHref(thisWeekKey)}>
+                回到本週
+              </a>
+            )}
+          </div>
+          <a href={weekHref(adjacentWeekKey(weekKey, 1))}>後一週</a>
+        </nav>
+
+        {cancelError && <p class="error" role="alert">{cancelError}</p>}
+        {resourcesFailed && <p class="error" role="alert">資源清單暫時無法載入，無法依資源篩選。</p>}
+
+        <form class="agenda-filter" method="get" action="/admin/schedule">
+          <input type="hidden" name="week" value={weekKey} />
+          <label>
+            資源篩選
+            <select name="resource">
+              <option value="">全部資源</option>
+              {resourceList.map((r) => <option value={r.id} selected={r.id === resourceId}>{r.name}{r.retiredAt !== null ? "（已停用）" : ""}</option>)}
+            </select>
+          </label>
+          <button type="submit">篩選</button>
+        </form>
+
+        {
+          !agenda.ok ? (
+            <p class="error" role="alert">排程資料暫時無法載入。</p>
+          ) : scheduleRows.length === 0 ? (
+            <p>目前尚無任何資源。<a href="/admin/resources">前往資源管理建立資源</a></p>
+          ) : (
+            <div class="table-scroll">
+              <table class="schedule-table">
+                <thead>
+                  <tr>
+                    <th class="schedule-resource-name">資源名稱</th>
+                    {weekDays.map((d) => (
+                      <th>
+                        <div>{d.label}</div>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {scheduleRows.map((row) => (
+                    <tr>
+                      <td class="schedule-resource-name">
+                        <div>
+                          <strong>{row.resource.name}</strong>
+                          {row.resource.retiredAt !== null && <span class="tag tag--quiet">已停用</span>}
+                        </div>
+                        <a class="meta" href={`/admin/resources/${row.resource.id}`}>設定資源 →</a>
+                      </td>
+                      {row.days.map((day) => (
+                        <td>
+                          <div class="schedule-day-cell">
+                            {day.slots.map((slot) => (
+                              <a
+                                class={`schedule-slot-pill ${slot.remainingSeats === 0 ? "is-full" : ""}`}
+                                href={`/admin/slots/${slot.id}`}
+                                data-slot-trigger
+                                data-slot-id={slot.id}
+                              >
+                                <strong>{formatTaipeiTime(slot.startsAt)}–{formatTaipeiTime(slot.endsAt)}</strong>
+                                <div>
+                                  <span class="slot-occupied-count">{slot.occupied}／{slot.capacity}</span>
+                                  {slot.overcommitted && <span class="tag agenda-over tag-overcommitted is-visible">超占</span>}
+                                  {slot.remainingSeats === 0 && <span class="tag tag--quiet">滿</span>}
+                                </div>
+                                <script type="application/json" id={`slot-data-${slot.id}`} set:html={JSON.stringify(slot)} />
+                              </a>
+                            ))}
+                            {row.resource.retiredAt === null && (
+                              <a class="schedule-add-btn" href={`/admin/resources/${row.resource.id}`}>
+                                + 開時段
+                              </a>
+                            )}
+                          </div>
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        }
+        <AdminSlotDrawer />
+      </>
+    )
+  }
+</AdminLayout>
