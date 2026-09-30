@@ -12,4 +12,6 @@ graft/
 # Playwright 的輸出（報告與失敗時的 trace）
 e2e/playwright-report/
 e2e/test-results/
+# Playwright MCP 瀏覽器工具的 console log，與專案無關
+.playwright-mcp/
 coverage/
