@@ -24,7 +24,7 @@ describe("createResource", () => {
 
     expect(result).toEqual({
       ok: true,
-      data: { id: expect.any(Number), ...validResource, holdTtlSeconds: 600 },
+      data: { id: expect.any(Number), ...validResource, holdTtlSeconds: 600, description: null },
     });
     expect(await app.listResources()).toEqual({
       ok: true,
@@ -51,7 +51,7 @@ describe("createResource", () => {
       target_id: id,
       at: NOW,
     });
-    expect(JSON.parse(rows[0]!.detail)).toEqual({ ...validResource, holdTtlSeconds: 600 });
+    expect(JSON.parse(rows[0]!.detail)).toEqual({ ...validResource, holdTtlSeconds: 600, description: null });
   });
 
   it.each([
@@ -64,6 +64,8 @@ describe("createResource", () => {
     ["取消截止時間為負", { ...validResource, cancellationCutoffSeconds: -1 }, "cancellationCutoffSeconds"],
     ["欄位型別錯誤", { ...validResource, seatsPerHold: "4" }, "seatsPerHold"],
     ["NaN", { ...validResource, seatsPerHold: NaN }, "seatsPerHold"],
+    ["說明超過 200 字", { ...validResource, description: "a".repeat(201) }, "description"],
+    ["說明不是文字", { ...validResource, description: 5 }, "description"],
     ["名稱超過 200 字", { ...validResource, name: "a".repeat(201) }, "name"],
     ["保留期限超過 24 小時", { ...validResource, holdTtlSeconds: 86_401 }, "holdTtlSeconds"],
     ["單筆名額上限超過 1000", { ...validResource, seatsPerHold: 1001 }, "seatsPerHold"],
@@ -86,9 +88,27 @@ describe("createResource", () => {
     expect(result.ok).toBe(true);
   });
 
-  it("上限本身合法（名稱 200 字、24 小時、1000 名額、30 天）", async () => {
+  it("建立時可帶說明，前後空白會去掉，並經 listResources 回傳", async () => {
+    const result = await app.createResource(jwt, { ...validResource, description: "  面向開放廚房的長桌  " });
+
+    expect(result.ok && result.data.description).toBe("面向開放廚房的長桌");
+    const list = await app.listResources();
+    expect(list.ok && list.data[0]?.description).toBe("面向開放廚房的長桌");
+    const rows = await auditRows();
+    expect(JSON.parse(rows[0]!.detail)).toMatchObject({ description: "面向開放廚房的長桌" });
+  });
+
+  it("說明省略、空字串或只有空白時為 null", async () => {
+    for (const description of [undefined, "", "   "]) {
+      const result = await app.createResource(jwt, { ...validResource, description });
+      expect(result.ok && result.data.description).toBeNull();
+    }
+  });
+
+  it("上限本身合法（名稱 200 字、說明 200 字、24 小時、1000 名額、30 天）", async () => {
     const result = await app.createResource(jwt, {
       name: "a".repeat(200),
+      description: "說".repeat(200),
       holdTtlSeconds: 86_400,
       seatsPerHold: 1000,
       cancellationCutoffSeconds: 30 * 86_400,
@@ -106,7 +126,7 @@ describe("updateResource", () => {
 
     const result = await app.updateResource(jwt, { id, ...changed });
 
-    expect(result).toEqual({ ok: true, data: { id, ...changed } });
+    expect(result).toEqual({ ok: true, data: { id, ...changed, description: null } });
     const list = await app.listResourcesForAdmin(jwt);
     expect(list.ok && list.data.find((r) => r.id === other)).toMatchObject({ name: "另一個", holdTtlSeconds: 111 });
     const rows = await auditRows();
@@ -120,9 +140,26 @@ describe("updateResource", () => {
     });
     // before 與 after 一起記錄；before 由 batch 內先於 UPDATE 的那句 INSERT … SELECT 讀出
     expect(JSON.parse(rows[0]!.detail)).toEqual({
-      before: { name: "大廳", holdTtlSeconds: 600, seatsPerHold: 4, cancellationCutoffSeconds: 3600 },
-      after: changed,
+      before: { name: "大廳", holdTtlSeconds: 600, seatsPerHold: 4, cancellationCutoffSeconds: 3600, description: null },
+      after: { ...changed, description: null },
     });
+  });
+
+  it("修改說明，並可清空回 null；超過 200 字被拒且說明不變", async () => {
+    const id = await insertResource({ name: "大廳", description: "舊說明" });
+
+    const updated = await app.updateResource(jwt, { id, ...changed, description: "新說明" });
+    expect(updated.ok && updated.data.description).toBe("新說明");
+
+    const tooLong = await app.updateResource(jwt, { id, ...changed, description: "a".repeat(201) });
+    expect(tooLong).toMatchObject({ ok: false, reason: "invalid_input" });
+    const still = await app.listResourcesForAdmin(jwt);
+    expect(still.ok && still.data[0]?.description).toBe("新說明");
+
+    const cleared = await app.updateResource(jwt, { id, ...changed, description: "" });
+    expect(cleared.ok && cleared.data.description).toBeNull();
+    const rows = await auditRows();
+    expect(JSON.parse(rows[0]!.detail)).toMatchObject({ before: { description: "舊說明" }, after: { description: "新說明" } });
   });
 
   it("未知的資源回傳 resource_not_found，且不寫稽核紀錄", async () => {
@@ -162,7 +199,7 @@ describe("listResourcesForAdmin", () => {
 
     expect(result).toEqual({
       ok: true,
-      data: [{ id, name: "大廳", holdTtlSeconds: 600, seatsPerHold: 4, cancellationCutoffSeconds: 3600 }],
+      data: [{ id, name: "大廳", holdTtlSeconds: 600, seatsPerHold: 4, cancellationCutoffSeconds: 3600, description: null }],
     });
   });
 });

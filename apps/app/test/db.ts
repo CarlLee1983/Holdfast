@@ -26,6 +26,7 @@ interface ResourceRow {
   holdTtlSeconds?: number;
   seatsPerHold?: number;
   cancellationCutoffSeconds?: number;
+  description?: string;
 }
 
 export async function insertResource(row: ResourceRow): Promise<number> {
@@ -36,6 +37,10 @@ export async function insertResource(row: ResourceRow): Promise<number> {
     row.seatsPerHold ?? DEFAULT_SEATS_PER_HOLD,
     row.cancellationCutoffSeconds ?? DEFAULT_CANCELLATION_CUTOFF_SECONDS,
   ];
+  if (row.description !== undefined) {
+    columns.push("description");
+    values.push(row.description);
+  }
   if (row.holdTtlSeconds !== undefined) {
     columns.push("hold_ttl_seconds");
     values.push(row.holdTtlSeconds);

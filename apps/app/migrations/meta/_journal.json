@@ -57,6 +57,13 @@
       "when": 1790674027692,
       "tag": "0007_natural_pepper_potts",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1790730777703,
+      "tag": "0008_oval_sumo",
+      "breakpoints": true
     }
   ]
 }
