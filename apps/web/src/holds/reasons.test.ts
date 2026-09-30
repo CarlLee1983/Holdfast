@@ -3,8 +3,8 @@ import { describeCancelFailure, describeConfirmFailure, describeHoldFailure, hol
 
 describe("建立保留失敗原因轉成訊息", () => {
   it.each([
-    ["insufficient_seats", "剩餘名額不足，請改選其他時段或減少名額"],
-    ["seats_per_hold_exceeded", "超過這個資源的單筆名額上限"],
+    ["insufficient_seats", "剩餘位數不足，請改選其他時段或減少人數"],
+    ["seats_per_hold_exceeded", "人數超過這個座位線上可訂的上限"],
     ["slot_started", "時段已開始，無法保留"],
     ["already_in_slot", "你在這個時段已有有效的保留或訂位"],
     ["active_hold_limit_reached", "你持有的有效保留已達上限，請先確認或等待到期後再保留"],

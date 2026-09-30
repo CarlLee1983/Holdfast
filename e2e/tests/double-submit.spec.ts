@@ -69,8 +69,8 @@ test("伺服器拒絕並重新渲染頁面後，選擇還在，保留按鈕恢�
   await hold.click();
   expect((await response).status()).toBe(409);
 
-  // 確認是名額超過單筆上限造成的拒絕，而不是其他錯誤
-  await expect(page.getByRole("alert")).toHaveText("超過這個資源的單筆名額上限");
+  // 確認是人數超過單筆名額上限造成的拒絕，而不是其他錯誤
+  await expect(page.getByRole("alert")).toHaveText("人數超過這個座位線上可訂的上限");
   // POST 回到含 query 的同一網址，重新渲染後時段仍是選中的
   await expect(slotButton(page, "double-submit-rejected")).toHaveAttribute("aria-pressed", "true");
   await expect(holdButton(page)).toBeEnabled();

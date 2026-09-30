@@ -31,7 +31,7 @@ describe("handleHoldPost", () => {
     const app = fakeApp({ ok: false, reason: "insufficient_seats" });
 
     expect(await run(app, member)).toEqual({
-      error: "剩餘名額不足，請改選其他時段或減少名額",
+      error: "剩餘位數不足，請改選其他時段或減少人數",
       status: 409,
     });
   });
