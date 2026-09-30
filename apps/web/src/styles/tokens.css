@@ -1,6 +1,6 @@
-/* 會員面全域 token：潮間 Tidal Table 的視覺語言（原型見分支 prototype/tidal-table-home）。
+/* 全域 token：潮間 Tidal Table 的視覺語言（原型見分支 prototype/tidal-table-home）。
    墨綠品牌色塊、暖米灰紙色、1px 細線、2px 圓角；沒有卡片、沒有陰影，也沒有其他彩色 accent。
-   跟著 prefers-color-scheme 切換，不提供手動切換。管理後台不使用。 */
+   跟著 prefers-color-scheme 切換，不提供手動切換。會員面與管理後台共用。 */
 :root {
   color-scheme: light dark;
 

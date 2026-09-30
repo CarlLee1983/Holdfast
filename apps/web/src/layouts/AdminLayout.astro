@@ -1,8 +1,20 @@
 ---
+import "../styles/tokens.css";
+import "../styles/base.css";
+import "../styles/admin.css";
+import FontLinks from "../components/FontLinks.astro";
+
 interface Props {
   title: string;
 }
 const { title } = Astro.props;
+
+// 導覽列標出目前所在的區塊；路徑以 prefixes 的前綴比對（時段頁屬於資源區塊），之後新增區塊在這裡加一列
+const sections = [{ label: "資源", href: "/admin/resources", prefixes: ["/admin/resources", "/admin/slots"] }];
+const { pathname } = Astro.url;
+// 剛好在區塊頁本身是 "page"；在區塊底下的子頁是 "true"（仍屬於該區塊，但不是當前這一頁）
+const current = (href: string, prefixes: string[]) =>
+  pathname === href ? "page" : prefixes.some((p) => pathname.startsWith(`${p}/`)) ? "true" : undefined;
 ---
 
 <!doctype html>
@@ -12,18 +24,24 @@ const { title } = Astro.props;
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex" />
     <title>{title}｜Holdfast 管理後台</title>
-    <style>
-      body { font-family: system-ui, sans-serif; max-width: 48rem; margin: 2rem auto; padding: 0 1rem; }
-      label { display: block; margin-top: 0.75rem; }
-      .error { color: #b00020; }
-      .notice { color: #1b5e20; }
-      table { border-collapse: collapse; }
-      th, td { padding: 0.25rem 0.75rem; border-bottom: 1px solid #ddd; text-align: left; }
-    </style>
+    <FontLinks />
   </head>
   <body>
-    <nav><a href="/admin">管理後台</a> ・ <a href="/">公開頁面</a></nav>
-    <h1>{title}</h1>
-    <slot />
+    <div class="admin-shell">
+      <nav class="admin-bar" aria-label="管理後台導覽">
+        <span class="admin-brand">Holdfast 管理後台</span>
+        {sections.map(({ label, href, prefixes }) => <a href={href} aria-current={current(href, prefixes)}>{label}</a>)}
+        <a class="admin-external" href="/">公開頁面</a>
+      </nav>
+      <main>
+        <h1>{title}</h1>
+        <slot />
+      </main>
+    </div>
+    <script>
+      import { guardDoubleSubmit } from "../shared/double-submit-client";
+
+      guardDoubleSubmit();
+    </script>
   </body>
 </html>

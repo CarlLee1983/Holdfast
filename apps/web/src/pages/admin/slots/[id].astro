@@ -56,31 +56,33 @@ const formatDateTime = (time: number) => `${formatTaipeiDate(time)} ${formatTaip
         {holdsAndBookings.length === 0 ? (
           <p>這個時段沒有保留或訂位。</p>
         ) : (
-          <table>
-            <thead>
-              <tr><th>會員</th><th>Email</th><th>名額</th><th>狀態</th><th>建立時間</th><th>到期時間</th><th>操作</th></tr>
-            </thead>
-            <tbody>
-              {holdsAndBookings.map((holdOrBooking) => (
-                <tr>
-                  <td>{memberIdentity(holdOrBooking)}</td>
-                  <td>{holdOrBooking.memberEmail ?? "—"}</td>
-                  <td>{holdOrBooking.seats}</td>
-                  <td>{holdOrBookingStatus(holdOrBooking)}</td>
-                  <td>{formatDateTime(holdOrBooking.createdAt)}</td>
-                  <td>{formatDateTime(holdOrBooking.expiresAt)}</td>
-                  <td>
-                    {holdOrBooking.status === "confirmed" && (
-                      <form method="post">
-                        <input type="hidden" name="bookingId" value={holdOrBooking.id} />
-                        <button type="submit">取消訂位</button>
-                      </form>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr><th>會員</th><th>Email</th><th>名額</th><th>狀態</th><th>建立時間</th><th>到期時間</th><th>操作</th></tr>
+              </thead>
+              <tbody>
+                {holdsAndBookings.map((holdOrBooking) => (
+                  <tr>
+                    <td>{memberIdentity(holdOrBooking)}</td>
+                    <td>{holdOrBooking.memberEmail ?? "—"}</td>
+                    <td>{holdOrBooking.seats}</td>
+                    <td>{holdOrBookingStatus(holdOrBooking)}</td>
+                    <td>{formatDateTime(holdOrBooking.createdAt)}</td>
+                    <td>{formatDateTime(holdOrBooking.expiresAt)}</td>
+                    <td>
+                      {holdOrBooking.status === "confirmed" && (
+                        <form method="post">
+                          <input type="hidden" name="bookingId" value={holdOrBooking.id} />
+                          <button type="submit">取消訂位</button>
+                        </form>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </>
     )

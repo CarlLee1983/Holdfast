@@ -20,20 +20,27 @@ export interface SlotAvailability {
   remainingSeats: number;
 }
 
+const resourceColumns = {
+  id: resources.id,
+  name: resources.name,
+  holdTtlSeconds: resources.holdTtlSeconds,
+  seatsPerHold: resources.seatsPerHold,
+  cancellationCutoffSeconds: resources.cancellationCutoffSeconds,
+  description: resources.description,
+};
+
 export async function selectResources(
   db: DrizzleD1Database,
 ): Promise<ResourceSummary[]> {
-  return db
-    .select({
-      id: resources.id,
-      name: resources.name,
-      holdTtlSeconds: resources.holdTtlSeconds,
-      seatsPerHold: resources.seatsPerHold,
-      cancellationCutoffSeconds: resources.cancellationCutoffSeconds,
-      description: resources.description,
-    })
-    .from(resources)
-    .orderBy(asc(resources.id));
+  return db.select(resourceColumns).from(resources).orderBy(asc(resources.id));
+}
+
+export async function selectResource(
+  db: DrizzleD1Database,
+  resourceId: number,
+): Promise<ResourceSummary | undefined> {
+  const [row] = await db.select(resourceColumns).from(resources).where(eq(resources.id, resourceId)).limit(1);
+  return row;
 }
 
 export async function resourceExists(

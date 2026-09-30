@@ -1,5 +1,5 @@
 import { exports } from "cloudflare:workers";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ADMIN_EMAIL, mintAccessJwt } from "./access";
 import { setNow } from "./clock";
 import { auditRows, countRows, insertHold, insertResource, insertSlot, resetDb } from "./db";
@@ -481,6 +481,23 @@ describe("deleteSlot", () => {
     expect(await countRows("holds")).toBe(1);
   });
 
+  it("結構化 log 的 detail 與 D1 稽核列的 detail 一致", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      expect((await app.deleteSlot(jwt, { slotId })).ok).toBe(true);
+
+      const logged = log.mock.calls
+        .map(([line]) => JSON.parse(String(line)))
+        .filter((entry) => entry.event === "admin_audit");
+      expect(logged).toHaveLength(1);
+      const [row] = await auditRows();
+      expect(logged[0].detail).toEqual(JSON.parse(row!.detail));
+      expect(logged[0].detail).not.toBeNull();
+    } finally {
+      log.mockRestore();
+    }
+  });
+
   it("未知的時段回傳 slot_not_found，且不寫稽核", async () => {
     expect(await app.deleteSlot(jwt, { slotId: 999_999 })).toEqual({ ok: false, reason: "slot_not_found" });
     expect(await countRows("admin_audit")).toBe(0);
@@ -550,5 +567,23 @@ describe("listSlotsForAdmin", () => {
 
   it("未知的資源回傳 resource_not_found", async () => {
     expect(await app.listSlotsForAdmin(jwt, 999_999)).toEqual({ ok: false, reason: "resource_not_found" });
+  });
+});
+
+describe("getResourceForAdmin", () => {
+  it("回傳單一資源的完整內容", async () => {
+    const created = await app.createResource(jwt, { ...validResource, description: "靠窗" });
+    await app.createResource(jwt, { ...validResource, name: "包廂" });
+    if (!created.ok) throw new Error("建立資源失敗");
+
+    expect(await app.getResourceForAdmin(jwt, created.data.id)).toEqual({ ok: true, data: created.data });
+  });
+
+  it.each([["NaN", Number.NaN], ["非整數", 1.5]])("資源編號是%s：回傳 invalid_input", async (_label, id) => {
+    expect(await app.getResourceForAdmin(jwt, id)).toMatchObject({ ok: false, reason: "invalid_input" });
+  });
+
+  it("未知的資源回傳 resource_not_found", async () => {
+    expect(await app.getResourceForAdmin(jwt, 999_999)).toEqual({ ok: false, reason: "resource_not_found" });
   });
 });

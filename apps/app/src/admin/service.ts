@@ -1,7 +1,7 @@
 import { sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import type { z } from "zod";
-import { resourceExists, selectResources, type ResourceSummary } from "../catalog/queries";
+import { resourceExists, selectResource, selectResources, type ResourceSummary } from "../catalog/queries";
 import type { Clock } from "../shared/clock";
 import { fail, ok, type InvalidInput, type Result } from "../shared/result";
 import { createAccessVerifier, type AccessConfig, type AccessIdentity } from "./access";
@@ -14,6 +14,7 @@ import {
   createResourceInput,
   createSlotInput,
   deleteSlotInput,
+  getResourceInput,
   listSlotHoldsAndBookingsInput,
   updateResourceInput,
   updateSlotCapacityInput,
@@ -58,8 +59,8 @@ export function createAdminService(d1: D1Database, clock: Clock, accessConfig: A
   const db = drizzle(d1);
   const verifier = createAccessVerifier(accessConfig, clock);
 
-  /** 每個管理寫入方法的共同前置：先驗身分、再驗輸入，兩者都過了才執行 `run`。 */
-  async function authorizedWrite<S extends z.ZodType, T>(
+  /** 每個管理方法（讀與寫）的共同前置：先驗身分、再驗輸入，兩者都過了才執行 `run`。 */
+  async function authorized<S extends z.ZodType, T>(
     jwt: unknown,
     schema: S,
     input: unknown,
@@ -168,7 +169,7 @@ export function createAdminService(d1: D1Database, clock: Clock, accessConfig: A
 
   return {
     listSlotHoldsAndBookingsForAdmin(jwt: unknown, input: unknown): Promise<AdminResult<SlotHoldsAndBookings, "slot_not_found">> {
-      return authorizedWrite(jwt, listSlotHoldsAndBookingsInput, input, async (_actor, { slotId }) => {
+      return authorized(jwt, listSlotHoldsAndBookingsInput, input, async (_actor, { slotId }) => {
         const slot = await d1.prepare(
           `SELECT s.id, s.resource_id AS resourceId, s.starts_at AS startsAt,
                   s.ends_at AS endsAt, s.capacity, r.name AS resourceName
@@ -191,7 +192,7 @@ export function createAdminService(d1: D1Database, clock: Clock, accessConfig: A
     },
 
     cancelBookingForAdmin(jwt: unknown, input: unknown): Promise<AdminResult<AdminBooking, "booking_not_found">> {
-      return authorizedWrite(jwt, cancelBookingInput, input, async (actor, { slotId, bookingId }) => {
+      return authorized(jwt, cancelBookingInput, input, async (actor, { slotId, bookingId }) => {
         const at = clock.now();
         // D1 batch is atomic. changes() makes the audit conditional on the preceding UPDATE.
         const [updated] = await d1.batch<AdminBooking>([
@@ -224,8 +225,18 @@ export function createAdminService(d1: D1Database, clock: Clock, accessConfig: A
       return ok(await selectResources(db));
     },
 
+    getResourceForAdmin(
+      jwt: unknown,
+      resourceId: number,
+    ): Promise<AdminResult<ResourceSummary, "resource_not_found">> {
+      return authorized(jwt, getResourceInput, resourceId, async (_actor, id) => {
+        const resource = await selectResource(db, id);
+        return resource ? ok(resource) : fail("resource_not_found");
+      });
+    },
+
     createResource(jwt: unknown, input: unknown): Promise<AdminResult<ResourceSummary>> {
-      return authorizedWrite(jwt, createResourceInput, input, async (actor, data) => {
+      return authorized(jwt, createResourceInput, input, async (actor, data) => {
         const [insert] = await d1.batch<{ id: number }>([
           d1
             .prepare(
@@ -244,7 +255,7 @@ export function createAdminService(d1: D1Database, clock: Clock, accessConfig: A
       jwt: unknown,
       input: unknown,
     ): Promise<AdminResult<ResourceSummary, "resource_not_found">> {
-      return authorizedWrite(jwt, updateResourceInput, input, async (actor, data) => {
+      return authorized(jwt, updateResourceInput, input, async (actor, data) => {
         const { id, ...fields } = data;
         // 順序固定：稽核（讀舊值）在前，UPDATE 在後
         const [audit, update] = await d1.batch<{ detail: string }>([
@@ -265,7 +276,7 @@ export function createAdminService(d1: D1Database, clock: Clock, accessConfig: A
       jwt: unknown,
       input: unknown,
     ): Promise<AdminResult<SlotRecord, "resource_not_found" | "slot_overlaps">> {
-      return authorizedWrite(jwt, createSlotInput, input, async (actor, slot) => {
+      return authorized(jwt, createSlotInput, input, async (actor, slot) => {
         // 重疊檢查與寫入是同一句 INSERT … SELECT（ADR 0004 的做法），以 meta.changes 判斷成敗，
         // 不先讀再寫；[start, end) 相交 ⇔ 既有.start < 新.end 且 既有.end > 新.start，相鄰不算相交
         const [insert] = await d1.batch([
@@ -307,7 +318,7 @@ export function createAdminService(d1: D1Database, clock: Clock, accessConfig: A
       jwt: unknown,
       input: unknown,
     ): Promise<AdminResult<SlotRecord, "slot_not_found">> {
-      return authorizedWrite(jwt, updateSlotCapacityInput, input, async (actor, { slotId, capacity }) => {
+      return authorized(jwt, updateSlotCapacityInput, input, async (actor, { slotId, capacity }) => {
         // 不檢查已占用：調到低於占用就是超占，由「占用 > 容量」即時算出，不存旗標。
         // 順序固定：稽核（讀舊容量）在前，UPDATE 在後；時段不存在時兩句都不影響任何列
         const [audit, update] = await d1.batch<{
@@ -336,18 +347,19 @@ export function createAdminService(d1: D1Database, clock: Clock, accessConfig: A
     },
 
     deleteSlot(jwt: unknown, input: unknown): Promise<AdminResult<{ id: number }, "slot_not_found" | "slot_in_use">> {
-      return authorizedWrite(jwt, deleteSlotInput, input, async (actor, { slotId }) => {
+      return authorized(jwt, deleteSlotInput, input, async (actor, { slotId }) => {
         // 「保留紀錄全都可丟棄」的判定與刪除在同一個 batch（同一交易）內以條件寫入完成（ADR 0004），
         // 不先讀再刪。三句共用同一個條件，所以要嘛全部生效、要嘛都不動，成敗看最後一句的 changes。
         // 順序固定（推進高水位由 batchAtEffectiveNow 放在最前）：稽核（讀時段內容）→ 移除可丟棄的保留紀錄（holds.slot_id 外鍵要求，ADR 0012）→ 刪時段
         const now = clock.now();
         const guard = slotHasOnlyDiscardableHolds(slotId);
-        const [, , deletion] = await batchAtEffectiveNow(d1, now, [
+        const [audit, , deletion] = await batchAtEffectiveNow<{ detail: string }>(d1, now, [
           sql`
             INSERT INTO admin_audit (${sql.raw(AUDIT_COLUMNS)})
             SELECT ${actor.email}, 'slot.delete', 'slot', id, ${now},
               json_object('resourceId', resource_id, 'startsAt', starts_at, 'endsAt', ends_at, 'capacity', capacity)
             FROM slots WHERE id = ${slotId} AND ${guard}
+            RETURNING detail
           `,
           sql`DELETE FROM ${holds} WHERE ${holds.slotId} = ${slotId} AND ${guard}`,
           sql`DELETE FROM slots WHERE id = ${slotId} AND ${guard}`,
@@ -356,7 +368,7 @@ export function createAdminService(d1: D1Database, clock: Clock, accessConfig: A
           // 失敗之後才分辨原因（只用來選 reason，不影響是否刪除）
           return (await slotExists(db, slotId)) ? fail("slot_in_use") : fail("slot_not_found");
         }
-        logAudit(actor, "slot.delete", "slot", slotId, null);
+        logAudit(actor, "slot.delete", "slot", slotId, JSON.parse(audit!.results[0]!.detail));
         return ok({ id: slotId });
       });
     },
