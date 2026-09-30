@@ -1,5 +1,6 @@
 import { findResourceBySlotId } from "../catalog/find-resource";
 import { taipeiDateKey } from "../catalog/taipei-time";
+import { pickerPath } from "../picker/picker-url";
 import { parseRecordId } from "./record-id";
 
 export type HoldPageState<H, R> = { kind: "active"; hold: H; resource: R } | { kind: "unavailable" };
@@ -26,5 +27,5 @@ export function holdPageState<H extends { id: number; slotId: number }, R>(
 
 /** 「重新選擇時段」的連結：回到首頁，帶上這筆保留的人數與時段的台北日期。 */
 export function reselectUrl(hold: { seats: number; startsAt: number }): string {
-  return `/?seats=${hold.seats}&date=${taipeiDateKey(hold.startsAt)}`;
+  return pickerPath({ seats: hold.seats, date: taipeiDateKey(hold.startsAt) });
 }

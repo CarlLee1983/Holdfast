@@ -9,6 +9,7 @@ import { cancellationRuleText } from "../holds/cancellation";
 import { MERCHANT } from "../merchant/merchant";
 import { buildDateOptions } from "../picker/date-options";
 import { pickerAvailability, selectedSlot, slotsOnDate } from "../picker/list-slots";
+import { pickerLoginUrl } from "../picker/picker-url";
 import { groupByMeal } from "../picker/meal-groups";
 import { parseDate, parseSeats } from "../picker/params";
 import {
@@ -50,6 +51,9 @@ const date = parseDate(query.get("date"), dateOptions, taipeiDateKey(now));
 const listed = filterSlotsBySeats(slotsOnDate(allSlots, date, now), seats);
 const mealGroups = groupByMeal(listed, MERCHANT.lunchEndsAt);
 const chosen = selectedSlot(listed, query.get("slot"), seats, now);
+// 未登入選了時段就先去登入，回來時還原同一組選擇；無效或已不可保留的 slot 不算選了，照常顯示首頁。
+// 刻意在 GET 判斷而不是攔截點擊：有無 JS 走同一條路；代價是未登入打開帶有效 slot 的分享連結也會先去登入
+if (!member && chosen) return Astro.redirect(pickerLoginUrl({ seats, date, slot: chosen.id }), 303);
 const seatsNote = hiddenResourcesNote(hiddenResources(resources, seats));
 const dateHeading = dateOptions.find((option) => option.value === date)?.heading ?? date;
 ---

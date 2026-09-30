@@ -44,7 +44,12 @@ export function safeNextPath(value: string | null): string {
 
 /** 未登入訪客要去登入頁的網址，登入後回到 `url` 這一頁。 */
 export function loginUrl(url: URL): string {
-  return `/login?next=${encodeURIComponent(url.pathname + url.search)}`;
+  return loginUrlForPath(url.pathname + url.search);
+}
+
+/** 登入頁網址，登入後回到站內路徑 `path`（含查詢字串）。 */
+export function loginUrlForPath(path: string): string {
+  return `/login?next=${encodeURIComponent(path)}`;
 }
 
 /**
