@@ -3,6 +3,7 @@
 import { env } from "cloudflare:workers";
 import { readAccessJwt } from "../../../admin/access-jwt";
 import { handleCancelBookingPost } from "../../../admin/cancel-booking";
+import { describeFailure, failureStatus } from "../../../admin/reasons";
 import { slotCancellable } from "../../../admin/slot-cancellable";
 import { formatTaipeiDate, formatTaipeiDateTime, formatTaipeiTime } from "../../../catalog/taipei-time";
 import AccessDenied from "../../../components/AccessDenied.astro";
@@ -33,11 +34,10 @@ if (Astro.request.method === "POST") {
 const result = unauthorized ? null : await env.APP.getMemberForAdmin(jwt, { memberId });
 unauthorized ||= result !== null && !result.ok && result.reason === "unauthorized";
 if (unauthorized) Astro.response.status = 403;
-else if (result && !result.ok) {
-  Astro.response.status = result.reason === "member_not_found" ? 404 : result.reason === "invalid_input" ? 422 : 500;
-}
+else if (result && !result.ok) Astro.response.status = failureStatus(result.reason);
 
 const detail = result?.ok ? result.data : null;
+const loadError = result && !result.ok && !unauthorized ? describeFailure(result).message : null;
 const now = Date.now();
 const cancelled = Astro.url.searchParams.has("cancelled");
 const slotLabel = (r: { startsAt: number; endsAt: number }) =>
@@ -50,7 +50,7 @@ const slotLabel = (r: { startsAt: number; endsAt: number }) =>
       <AccessDenied />
     ) : !detail ? (
       <>
-        <p class="error" role="alert">找不到這位會員。</p>
+        <p class="error" role="alert">{loadError}</p>
         <p><a href="/admin/members">回到查會員</a></p>
       </>
     ) : (

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { describeFailure } from "./reasons";
+import { describeFailure, failureStatus } from "./reasons";
 
 describe("管理 RPC 失敗原因轉成給管理者看的訊息", () => {
   it.each([
@@ -28,5 +28,22 @@ describe("管理 RPC 失敗原因轉成給管理者看的訊息", () => {
     expect(failure.message).not.toContain("something_new");
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("something_new"));
     errorSpy.mockRestore();
+  });
+});
+
+describe("failureStatus", () => {
+  it.each([
+    ["unauthorized", 403],
+    ["invalid_input", 422],
+    ["member_not_found", 404],
+    ["booking_not_found", 404],
+    ["slot_started", 409],
+  ])("%s 對應 %i", (reason, status) => {
+    expect(failureStatus(reason)).toBe(status);
+  });
+
+  it("沒列出的原因用 fallback，預設 500", () => {
+    expect(failureStatus("something_new")).toBe(500);
+    expect(failureStatus("something_new", 404)).toBe(404);
   });
 });

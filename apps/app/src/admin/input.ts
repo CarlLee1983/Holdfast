@@ -121,6 +121,7 @@ export const listAgendaInput = z
   });
 
 const MAX_MEMBER_QUERY_LENGTH = 200;
+const MAX_MEMBER_ID_LENGTH = 255;
 
 /** 查會員：名稱或 email 的部分字串；修剪後不可為空（空查詢會列出所有會員，沒有意義）。 */
 export const searchMembersInput = z.object({
@@ -135,7 +136,7 @@ export const getMemberInput = z.object({
   memberId: z
     .string({ error: "會員必須是文字" })
     .min(1, "會員編號無效")
-    .max(MAX_MEMBER_QUERY_LENGTH, "會員編號無效"),
+    .max(MAX_MEMBER_ID_LENGTH, "會員編號無效"),
 });
 
 export const listSlotHoldsAndBookingsInput = z.object({ slotId });
