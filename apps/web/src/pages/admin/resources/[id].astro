@@ -74,6 +74,9 @@ else if (!resource) Astro.response.status = 404;
 const resourceValues = resourceFailure && submitted.intent === "update-resource" ? submitted : resource;
 const slotValues = slotFailure ? submitted : {};
 const rowFailureSlotId = Number(submitted.slotId);
+/** 該列送出失敗時回填使用者輸入的值，否則顯示目前的值。 */
+const refill = (slotId: number, field: string, current: string | number) =>
+  rowFailure && rowFailureSlotId === slotId && submitted.intent === "update-time" ? (submitted[field] ?? "") : current;
 const slotErrors = slotFailure?.fields ?? {};
 ---
 
@@ -127,14 +130,14 @@ const slotErrors = slotFailure?.fields ?? {};
                             type="datetime-local"
                             name="startsAt"
                             aria-label="新開始（台北時間）"
-                            value={rowFailure && rowFailureSlotId === s.id && submitted.intent === "update-time" ? (submitted.startsAt ?? "") : formatTaipeiDateTimeInput(s.startsAt)}
+                            value={refill(s.id, "startsAt", formatTaipeiDateTimeInput(s.startsAt))}
                             required
                           />
                           <input
                             type="datetime-local"
                             name="endsAt"
                             aria-label="新結束（台北時間）"
-                            value={rowFailure && rowFailureSlotId === s.id && submitted.intent === "update-time" ? (submitted.endsAt ?? "") : formatTaipeiDateTimeInput(s.endsAt)}
+                            value={refill(s.id, "endsAt", formatTaipeiDateTimeInput(s.endsAt))}
                             required
                           />
                           <button type="submit">修改時間</button>
@@ -160,7 +163,7 @@ const slotErrors = slotFailure?.fields ?? {};
             </div>
           )
         }
-        <p>只有時段沒有任何保留或訂位紀錄（過期或已釋放的除外）時，才能修改時間。</p>
+        <p>時段仍有保留或訂位紀錄（過期或已釋放的保留除外）時，不能修改時間。</p>
         <p>容量可調到低於已占用：既有的保留與訂位不受影響，但超占的時段不再接受新的保留。</p>
         <h3>建立時段</h3>
         <form method="post">

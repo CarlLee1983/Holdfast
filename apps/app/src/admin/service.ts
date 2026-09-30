@@ -6,6 +6,8 @@ import type { Clock } from "../shared/clock";
 import { fail, ok, type InvalidInput, type Result } from "../shared/result";
 import { createAccessVerifier, type AccessConfig, type AccessIdentity } from "./access";
 import { parseInput } from "../shared/input";
+import { slots } from "../catalog/schema";
+import { toD1Statement } from "../shared/d1-statement";
 import { discardableHold } from "../holds/occupancy";
 import { batchAtEffectiveNow, effectiveNow } from "../shared/high-water-mark";
 import { CANCELLED, CONFIRMED, HELD, holds, RELEASED } from "../holds/schema";
@@ -131,12 +133,16 @@ export function createAdminService(d1: D1Database, clock: Clock, accessConfig: A
   const slotHasOnlyDiscardableHolds = (slotId: number) =>
     sql`NOT EXISTS (SELECT 1 FROM ${holds} WHERE ${holds.slotId} = ${slotId} AND NOT ${discardableHold(effectiveNow)})`;
 
-  /** 同資源沒有其他時段與 [startsAt, endsAt) 相交（排除自己）；相交規則同 createSlot，相鄰不算。 */
-  const noOverlap = (slotId: number, startsAt: number, endsAt: number) =>
+  /**
+   * 「同資源沒有其他時段與 [startsAt, endsAt) 相交」的條件片段；createSlot 與 updateSlotTime 共用。
+   * [start, end) 相交 ⇔ 既有.start < 新.end 且 既有.end > 新.start，相鄰不算相交。
+   * 修改時傳 `excludeSlotId` 排除自己；`resourceId` 可以是數字或回傳資源編號的子查詢。
+   */
+  const noOverlappingSlot = (resourceId: number | SQL, startsAt: number, endsAt: number, excludeSlotId?: number) =>
     sql`NOT EXISTS (
-      SELECT 1 FROM slots o
-      WHERE o.resource_id = (SELECT resource_id FROM slots WHERE id = ${slotId})
-        AND o.id != ${slotId} AND o.starts_at < ${endsAt} AND o.ends_at > ${startsAt}
+      SELECT 1 FROM ${slots}
+      WHERE ${slots.resourceId} = ${resourceId} AND ${slots.startsAt} < ${endsAt} AND ${slots.endsAt} > ${startsAt}
+        ${excludeSlotId === undefined ? sql`` : sql`AND ${slots.id} != ${excludeSlotId}`}
     )`;
 
   /**
@@ -286,19 +292,15 @@ export function createAdminService(d1: D1Database, clock: Clock, accessConfig: A
       input: unknown,
     ): Promise<AdminResult<SlotRecord, "resource_not_found" | "slot_overlaps">> {
       return authorized(jwt, createSlotInput, input, async (actor, slot) => {
-        // 重疊檢查與寫入是同一句 INSERT … SELECT（ADR 0004 的做法），以 meta.changes 判斷成敗，
-        // 不先讀再寫；[start, end) 相交 ⇔ 既有.start < 新.end 且 既有.end > 新.start，相鄰不算相交
+        // 重疊檢查與寫入是同一句 INSERT … SELECT（ADR 0004 的做法），以 meta.changes 判斷成敗，不先讀再寫
         const [insert] = await d1.batch([
-          d1
-            .prepare(
-              `INSERT INTO slots (resource_id, starts_at, ends_at, capacity)
-               SELECT ?1, ?2, ?3, ?4
-               WHERE EXISTS (SELECT 1 FROM resources WHERE id = ?1)
-                 AND NOT EXISTS (
-                   SELECT 1 FROM slots WHERE resource_id = ?1 AND starts_at < ?3 AND ends_at > ?2
-                 )`,
-            )
-            .bind(slot.resourceId, slot.startsAt, slot.endsAt, slot.capacity),
+          toD1Statement(
+            d1,
+            sql`INSERT INTO slots (resource_id, starts_at, ends_at, capacity)
+               SELECT ${slot.resourceId}, ${slot.startsAt}, ${slot.endsAt}, ${slot.capacity}
+               WHERE EXISTS (SELECT 1 FROM resources WHERE id = ${slot.resourceId})
+                 AND ${noOverlappingSlot(slot.resourceId, slot.startsAt, slot.endsAt)}`,
+          ),
           auditAfterInsert(actor, "slot.create", "slot", slot),
         ]);
         if (insert!.meta.changes === 0) {
@@ -362,11 +364,11 @@ export function createAdminService(d1: D1Database, clock: Clock, accessConfig: A
       return authorized(jwt, updateSlotTimeInput, input, async (actor, { slotId, startsAt, endsAt }) => {
         // 判定與更新在同一個 batch 內以條件寫入完成（ADR 0004），不先讀再寫：
         // 「保留紀錄全都可丟棄」與刪除時段共用 slotHasOnlyDiscardableHolds（ADR 0012），
-        // 重疊檢查同 createSlot，但排除自己。稽核與 UPDATE 共用同一組條件，所以要嘛都生效、要嘛都不動。
+        // 重疊檢查與 createSlot 共用 noOverlappingSlot，但排除自己。稽核與 UPDATE 共用同一組條件，所以要嘛都生效、要嘛都不動。
         // 順序固定（推進高水位由 batchAtEffectiveNow 放在最前）：稽核（讀舊時間）→ UPDATE。
         // 可丟棄的保留紀錄不必處理：修改時間不影響外鍵，它們留在原時段。
         const now = clock.now();
-        const guard = sql`${slotHasOnlyDiscardableHolds(slotId)} AND ${noOverlap(slotId, startsAt, endsAt)}`;
+        const guard = sql`${slotHasOnlyDiscardableHolds(slotId)} AND ${noOverlappingSlot(sql`(SELECT resource_id FROM slots WHERE id = ${slotId})`, startsAt, endsAt, slotId)}`;
         const [audit, update] = await batchAtEffectiveNow<{ detail: string; resourceId: number; capacity: number }>(d1, now, [
           sql`
             INSERT INTO admin_audit (${sql.raw(AUDIT_COLUMNS)})
@@ -386,7 +388,8 @@ export function createAdminService(d1: D1Database, clock: Clock, accessConfig: A
         ]);
         const row = update!.results[0];
         if (!row) {
-          // 失敗之後才分辨原因（只用來選 reason，不影響是否寫入）；同時成立時「有人占用」優先
+          // 失敗之後才分辨原因：另一個 batch 的盡力查詢，只用來選 reason；寫入本身已在上面的 batch 內原子地決定，
+          // 兩次之間狀態可能已變，所以原因只是近似。同時成立時「仍有保留或訂位紀錄」優先
           if (!(await slotExists(db, slotId))) return fail("slot_not_found");
           const [inUse] = await batchAtEffectiveNow<{ inUse: number }>(d1, now, [
             sql`SELECT NOT ${slotHasOnlyDiscardableHolds(slotId)} AS inUse`,

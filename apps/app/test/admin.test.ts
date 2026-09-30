@@ -615,7 +615,16 @@ describe("updateSlotTime", () => {
     });
   });
 
-  it("同時占用中又重疊：回報 slot_in_use", async () => {
+  it("其他資源同一時間、同資源相鄰（首尾相接）的時段：都不算重疊，修改成功", async () => {
+    const room = await insertResource({ name: "包廂" });
+    await insertSlot(room, NOW + 3 * HOUR, NOW + 4 * HOUR, 5);
+    await insertSlot(resourceId, NOW + 4 * HOUR, NOW + 5 * HOUR, 10);
+    await insertSlot(resourceId, NOW + 2 * HOUR, NOW + 3 * HOUR, 10);
+
+    expect((await move(NOW + 3 * HOUR, NOW + 4 * HOUR)).ok).toBe(true);
+  });
+
+  it("同時有保留或訂位紀錄又重疊：回報 slot_in_use", async () => {
     await insertSlot(resourceId, NOW + 3 * HOUR, NOW + 5 * HOUR, 10);
     await insertHold(slotId, 1, "confirmed", NOW - 1);
 

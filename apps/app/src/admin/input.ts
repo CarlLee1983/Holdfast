@@ -68,6 +68,11 @@ export const updateResourceInput = z.object({
   description,
 });
 
+const endsAfterStart = {
+  check: (slot: { startsAt: number; endsAt: number }) => slot.startsAt < slot.endsAt,
+  params: { path: ["endsAt"] as PropertyKey[], error: "結束時間必須晚於開始時間" },
+};
+
 export const createSlotInput = z
   .object({
     resourceId,
@@ -75,10 +80,7 @@ export const createSlotInput = z
     endsAt: slotTime("結束時間"),
     capacity,
   })
-  .refine((slot) => slot.startsAt < slot.endsAt, {
-    path: ["endsAt"],
-    error: "結束時間必須晚於開始時間",
-  });
+  .refine(endsAfterStart.check, endsAfterStart.params);
 
 /** 調整容量：可調到低於已占用（形成超占，CONTEXT.md），所以只驗容量本身的範圍。 */
 export const updateSlotCapacityInput = z.object({ slotId, capacity });
@@ -86,10 +88,7 @@ export const updateSlotCapacityInput = z.object({ slotId, capacity });
 /** 修改時段時間：只驗時間本身；是否有人占用與是否重疊由 service 在寫入時判定。 */
 export const updateSlotTimeInput = z
   .object({ slotId, startsAt: slotTime("開始時間"), endsAt: slotTime("結束時間") })
-  .refine((slot) => slot.startsAt < slot.endsAt, {
-    path: ["endsAt"],
-    error: "結束時間必須晚於開始時間",
-  });
+  .refine(endsAfterStart.check, endsAfterStart.params);
 
 export const deleteSlotInput = z.object({ slotId });
 

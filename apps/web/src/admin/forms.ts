@@ -17,12 +17,19 @@ export function resourceFormToInput(form: FormLike, id?: number) {
   return id === undefined ? { ...input, ...ttl } : { id, ...input, ...ttl };
 }
 
-/** 時段表單 → RPC 輸入；時間欄位是台北時間，轉成 UTC epoch 毫秒。 */
+/** 開始與結束欄位是台北時間，轉成 UTC epoch 毫秒；無效轉成 NaN，由 App 回報欄位錯誤。 */
+function slotTimes(form: FormLike) {
+  return {
+    startsAt: parseTaipeiDateTime(form.get("startsAt")) ?? Number.NaN,
+    endsAt: parseTaipeiDateTime(form.get("endsAt")) ?? Number.NaN,
+  };
+}
+
+/** 時段表單 → RPC 輸入。 */
 export function slotFormToInput(form: FormLike, resourceId: number) {
   return {
     resourceId,
-    startsAt: parseTaipeiDateTime(form.get("startsAt")) ?? Number.NaN,
-    endsAt: parseTaipeiDateTime(form.get("endsAt")) ?? Number.NaN,
+    ...slotTimes(form),
     capacity: toNumber(form.get("capacity")),
   };
 }
@@ -32,13 +39,9 @@ export function slotCapacityFormToInput(form: FormLike) {
   return { slotId: toNumber(form.get("slotId")), capacity: toNumber(form.get("capacity")) };
 }
 
-/** 修改時段時間表單 → RPC 輸入；時間欄位是台北時間，轉成 UTC epoch 毫秒。 */
+/** 修改時段時間表單 → RPC 輸入。 */
 export function slotTimeFormToInput(form: FormLike) {
-  return {
-    slotId: toNumber(form.get("slotId")),
-    startsAt: parseTaipeiDateTime(form.get("startsAt")) ?? Number.NaN,
-    endsAt: parseTaipeiDateTime(form.get("endsAt")) ?? Number.NaN,
-  };
+  return { slotId: toNumber(form.get("slotId")), ...slotTimes(form) };
 }
 
 /** 刪除時段表單 → RPC 輸入。 */

@@ -10,7 +10,7 @@ const MESSAGES: Record<string, string> = {
   resource_not_found: "找不到這個資源",
   slot_overlaps: "與其他時段重疊",
   slot_not_found: "找不到這個時段",
-  slot_in_use: "時段有人占用（有保留或訂位紀錄），無法刪除或修改時間",
+  slot_in_use: "時段仍有保留或訂位紀錄（過期或已釋放的保留除外）",
   invalid_input: "輸入有誤，請修正後再送出",
   booking_not_found: "找不到這筆訂位",
 };
