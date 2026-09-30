@@ -1,17 +1,25 @@
 ---
 import "../styles/tokens.css";
 import "../styles/base.css";
-import "../styles/cards.css";
 import { loginUrl } from "../auth/member";
+import { MERCHANT, srcsetOf } from "../merchant/merchant";
 
 interface Props {
-  /** 頁名；標題組成「<頁名> | Holdfast 訂位」 */
+  /** 頁名；標題組成「<頁名> | 潮間 Tidal Table 訂位」 */
   title: string;
   noindex?: boolean;
+  /**
+   * 首頁的封面版面：手機是照片在上的單欄，桌機（≥64rem）是左照片固定、右欄捲動的對分。
+   * 右欄在 <main> 之前放 intro slot（店家面板）。
+   */
+  cover?: boolean;
 }
 
-const { title, noindex = false } = Astro.props;
+const { title, noindex = false, cover = false } = Astro.props;
 const member = Astro.locals.member;
+const { name, cover: photo } = MERCHANT;
+const [smallest] = photo.sources;
+const largest = photo.sources[photo.sources.length - 1];
 ---
 
 <!doctype html>
@@ -20,33 +28,66 @@ const member = Astro.locals.member;
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     {noindex && <meta name="robots" content="noindex" />}
-    <title>{title} | Holdfast 訂位</title>
+    <title>{title} | {name.zh} {name.latin} 訂位</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@500;700&family=Noto+Sans+TC:wght@400;500;700&display=swap"
+    />
   </head>
   <body>
-    <header class="site-header">
-      <nav class="container site-nav" aria-label="主要導覽">
-        <a class="brand" href="/">Holdfast</a>
-        <div class="account">
-          {
-            member ? (
-              <>
-                <span class="member-name">{member.name}</span>
-                <a href="/me">我的保留與訂位</a>
-                <button type="button" class="secondary" id="sign-out">
-                  登出
-                </button>
-              </>
-            ) : Astro.url.pathname === "/login" ? null : (
-              <a href={loginUrl(Astro.url)}>登入</a>
-            )
-          }
-        </div>
-      </nav>
-      <p id="sign-out-error" class="container" role="alert" hidden></p>
-    </header>
-    <main class="container page">
-      <slot />
-    </main>
+    <div class:list={["shell", { "shell--cover": cover }]}>
+      {
+        cover && (
+          <figure class="photo">
+            <img
+              src={smallest.src}
+              srcset={srcsetOf(photo.sources)}
+              sizes="(min-width: 64rem) 50vw, 100vw"
+              width={largest.width}
+              height={largest.height}
+              alt={photo.alt}
+              fetchpriority="high"
+            />
+            <figcaption>
+              Photo: <a href={photo.credit.url} rel="noopener">{photo.credit.photographer}</a> / {photo.credit.source}
+            </figcaption>
+          </figure>
+        )
+      }
+      <header class="masthead">
+        <nav class="masthead-nav" aria-label="主要導覽">
+          <a class="mark" href="/" aria-label={`${name.zh} ${name.latin} 首頁`}>T</a>
+          <div class="account">
+            {
+              member ? (
+                <>
+                  <span class="member-name">{member.name}</span>
+                  <a href="/me">我的保留與訂位</a>
+                  <button type="button" id="sign-out">
+                    登出
+                  </button>
+                </>
+              ) : Astro.url.pathname === "/login" ? null : (
+                <a href={loginUrl(Astro.url)}>登入</a>
+              )
+            }
+          </div>
+        </nav>
+        <p id="sign-out-error" role="alert" hidden></p>
+      </header>
+      <div class="column">
+        <slot name="intro" />
+        <main class="page">
+          <slot />
+        </main>
+        <footer class="foot">
+          <span>{name.zh} {name.latin}・{MERCHANT.address}</span>
+          <span>{MERCHANT.disclaimer}</span>
+        </footer>
+      </div>
+    </div>
     <script>
       import { requestSignOut } from "../auth/client";
 
@@ -96,42 +137,193 @@ const member = Astro.locals.member;
 </html>
 
 <style>
-  .site-header {
-    border-bottom: 1px solid var(--border);
-    padding-block: var(--space-3);
+  /* ---------- 一般頁：頁首一列、內容置中 ---------- */
+  .masthead {
+    border-bottom: 1px solid var(--color-rule);
   }
-  .site-nav {
+  .masthead-nav {
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
     justify-content: space-between;
-    gap: var(--space-2) var(--space-4);
+    align-items: flex-start;
+    gap: var(--space-sm);
   }
-  .brand {
-    color: var(--foreground);
-    font-weight: 700;
-    font-size: var(--text-lg);
+  .mark {
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    width: var(--mark-size);
+    height: var(--mark-size);
+    background: var(--color-brand);
+    color: var(--color-on-brand);
     text-decoration: none;
+    font-family: var(--font-display);
+    font-size: 2rem;
+    line-height: 1;
+    letter-spacing: 0;
   }
   .account {
     display: flex;
     flex-wrap: wrap;
+    justify-content: flex-end;
     align-items: center;
-    gap: var(--space-2) var(--space-4);
-    font-size: var(--text-sm);
+    gap: var(--space-2xs) var(--space-sm);
+    margin: var(--space-md);
+    font-size: var(--text-xs);
+    letter-spacing: 0.04em;
+  }
+  .account:empty {
+    display: none;
+  }
+  .account a {
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .account a:hover {
+    text-decoration: underline;
   }
   .member-name {
-    color: var(--muted-foreground);
+    color: var(--color-muted);
+  }
+  /* 登出是按鈕（POST），外觀與旁邊的連結一致 */
+  .account button,
+  .account button:hover:not(:disabled) {
+    min-height: auto;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font-size: inherit;
+    font-weight: 400;
+    letter-spacing: inherit;
+  }
+  .account button:hover:not(:disabled) {
+    text-decoration: underline;
+    text-underline-offset: 3px;
   }
   #sign-out-error {
-    margin-top: var(--space-2);
+    margin: 0 var(--space-md) var(--space-md);
+  }
+
+  /* 內容左右留白；頁尾的細線與內容文字對齊 */
+  .shell {
+    --gutter: var(--space-lg);
   }
   .page {
-    padding-block: var(--space-4);
+    display: grid;
+    gap: var(--space-lg);
+    align-content: start;
+    max-width: var(--content-width);
+    margin-inline: auto;
+    padding: var(--space-xl) var(--gutter);
   }
+  .foot {
+    display: grid;
+    gap: var(--space-2xs);
+    width: calc(min(100%, var(--content-width)) - 2 * var(--gutter));
+    margin-inline: auto;
+    padding-block: var(--space-lg);
+    border-top: 1px solid var(--color-rule);
+    font-size: var(--text-xs);
+    color: var(--color-muted);
+  }
+
+  /* ---------- 首頁：封面版面 ---------- */
+  .shell--cover {
+    position: relative;
+    display: grid;
+  }
+  .photo {
+    margin: 0;
+    position: relative;
+    background: var(--color-paper-2);
+  }
+  .photo img {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 4 / 5;
+    object-fit: cover;
+    object-position: 50% 45%;
+  }
+  .photo figcaption {
+    position: absolute;
+    inset-inline-end: var(--space-md);
+    inset-block-end: var(--space-sm);
+    font-size: var(--text-2xs);
+    letter-spacing: 0.04em;
+    color: var(--color-scrim-ink);
+    opacity: 0.75;
+  }
+  .photo figcaption a {
+    text-decoration: none;
+  }
+  .shell--cover .masthead {
+    position: absolute;
+    inset-inline: 0;
+    inset-block-start: 0;
+    z-index: var(--z-masthead);
+    border: 0;
+    pointer-events: none;
+  }
+  .shell--cover .mark,
+  .shell--cover .account,
+  .shell--cover #sign-out-error {
+    pointer-events: auto;
+  }
+  /* 疊在照片上的會員入口：半透明紙色底 */
+  .shell--cover .account {
+    padding: var(--space-2xs) var(--space-sm);
+    border-radius: var(--radius);
+    background: var(--color-scrim);
+    color: var(--color-scrim-ink);
+  }
+  .shell--cover .member-name {
+    color: inherit;
+    opacity: 0.75;
+  }
+  .shell--cover #sign-out-error {
+    background: var(--color-paper);
+  }
+  .column {
+    min-width: 0;
+  }
+  .shell--cover .page {
+    max-width: none;
+    margin: 0;
+  }
+  .shell--cover .foot {
+    width: auto;
+    margin-inline: var(--gutter);
+  }
+
   @media (min-width: 40rem) {
-    .page {
-      padding-block: var(--space-6);
+    .shell {
+      --gutter: var(--space-2xl);
+    }
+  }
+  @media (min-width: 64rem) {
+    .shell--cover {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+    .shell--cover .photo {
+      position: sticky;
+      top: 0;
+      height: 100dvh;
+    }
+    .shell--cover .photo img {
+      height: 100%;
+      aspect-ratio: auto;
+    }
+    /* 頁首固定在照片那一半：T 方塊與會員入口都留在照片上 */
+    .shell--cover .masthead {
+      position: fixed;
+      inset-inline-end: auto;
+      width: 50%;
+    }
+    .shell--cover .page {
+      padding-inline-end: var(--space-3xl);
+    }
+    .shell--cover .foot {
+      margin-inline-end: var(--space-3xl);
     }
   }
 </style>
