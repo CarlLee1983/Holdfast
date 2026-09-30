@@ -71,6 +71,13 @@
       "when": 1790743893825,
       "tag": "0009_modern_lily_hollister",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1790745367531,
+      "tag": "0010_crazy_rawhide_kid",
+      "breakpoints": true
     }
   ]
 }

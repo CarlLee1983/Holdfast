@@ -26,6 +26,7 @@ export type CreateHoldResult =
   | Result<
       HoldRecord,
       | "idempotency_key_conflict"
+      | "resource_retired"
       | "slot_not_found"
       | "slot_started"
       | "already_in_slot"
@@ -62,6 +63,7 @@ export function createHoldService(d1: D1Database, clock: Clock) {
     }
     const slot = await selectHoldDiagnosis(db, request.memberId, request.slotId, now);
     if (!slot) return fail("slot_not_found");
+    if (slot.retiredAt !== null) return fail("resource_retired");
     if (slot.startsAt <= now) return fail("slot_started");
     if (slot.memberInSlot) return fail("already_in_slot");
     if (slot.memberActiveHolds >= MAX_ACTIVE_HOLDS_PER_MEMBER) return fail("active_hold_limit_reached");

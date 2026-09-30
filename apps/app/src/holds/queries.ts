@@ -42,7 +42,12 @@ export interface SlotSummary {
   endsAt: number;
 }
 
-export interface MyHold extends HoldRecord, SlotSummary {}
+/** 確認頁使用會員自己的保留資料，不依賴會隱藏停用資源的公開 catalog。 */
+export interface MyHold extends HoldRecord, SlotSummary {
+  resourceDescription: string | null;
+  holdTtlSeconds: number;
+  cancellationCutoffSeconds: number;
+}
 
 export interface MyBooking extends BookingRecord, SlotSummary {
   status: typeof CONFIRMED | typeof CANCELLED;
@@ -83,6 +88,7 @@ export async function insertHoldIfAvailable(
     SELECT s.id, ${memberId}, ${seats}, ${HELD}, ${effectiveNow} + r.hold_ttl_seconds * 1000, ${idempotencyKey}, ${effectiveNow}
     FROM slots s JOIN resources r ON r.id = s.resource_id
     WHERE s.id = ${slotId}
+      AND r.retired_at IS NULL
       AND s.starts_at > ${effectiveNow}
       AND ${seats} <= r.seats_per_hold
       AND NOT ${memberActiveInSlot(memberId, sql`s.id`, effectiveNow)}
@@ -114,6 +120,7 @@ export async function selectHoldByKey(
 }
 
 export interface HoldDiagnosis {
+  retiredAt: number | null;
   startsAt: number;
   capacity: number;
   seatsPerHold: number;
@@ -134,6 +141,7 @@ export async function selectHoldDiagnosis(
       startsAt: slots.startsAt,
       capacity: slots.capacity,
       seatsPerHold: resources.seatsPerHold,
+      retiredAt: resources.retiredAt,
       occupied: occupiedSeats(sql`${slots.id}`, now).as("occupied"),
       memberInSlot: memberActiveInSlot(memberId, sql`${slots.id}`, now).mapWith(Boolean).as("member_in_slot"),
       memberActiveHolds: memberActiveHoldCount(memberId, now).as("member_active_holds"),
@@ -155,6 +163,9 @@ export async function selectActiveHolds(
     .select({
       ...holdColumns,
       resourceName: resources.name,
+      resourceDescription: resources.description,
+      holdTtlSeconds: resources.holdTtlSeconds,
+      cancellationCutoffSeconds: resources.cancellationCutoffSeconds,
       startsAt: slots.startsAt,
       endsAt: slots.endsAt,
     })

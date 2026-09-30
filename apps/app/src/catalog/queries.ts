@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, sql } from "drizzle-orm";
+import { and, asc, eq, gt, isNull, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { occupiedSeats } from "../holds/occupancy";
 import { resources, slots } from "./schema";
@@ -10,6 +10,10 @@ export interface ResourceSummary {
   seatsPerHold: number;
   cancellationCutoffSeconds: number;
   description: string | null;
+}
+
+export interface AdminResourceSummary extends ResourceSummary {
+  retiredAt: number | null;
 }
 
 export interface SlotAvailability {
@@ -32,14 +36,18 @@ const resourceColumns = {
 export async function selectResources(
   db: DrizzleD1Database,
 ): Promise<ResourceSummary[]> {
-  return db.select(resourceColumns).from(resources).orderBy(asc(resources.id));
+  return db.select(resourceColumns).from(resources).where(isNull(resources.retiredAt)).orderBy(asc(resources.id));
+}
+
+export async function selectResourcesForAdmin(db: DrizzleD1Database): Promise<AdminResourceSummary[]> {
+  return db.select({ ...resourceColumns, retiredAt: resources.retiredAt }).from(resources).orderBy(asc(resources.id));
 }
 
 export async function selectResource(
   db: DrizzleD1Database,
   resourceId: number,
-): Promise<ResourceSummary | undefined> {
-  const [row] = await db.select(resourceColumns).from(resources).where(eq(resources.id, resourceId)).limit(1);
+): Promise<AdminResourceSummary | undefined> {
+  const [row] = await db.select({ ...resourceColumns, retiredAt: resources.retiredAt }).from(resources).where(eq(resources.id, resourceId)).limit(1);
   return row;
 }
 
@@ -77,6 +85,7 @@ export async function selectSlotAvailability(
       remainingSeats: remainingSeats(now).as("remaining_seats"),
     })
     .from(slots)
-    .where(and(eq(slots.resourceId, resourceId), gt(slots.endsAt, now)))
+    .innerJoin(resources, eq(resources.id, slots.resourceId))
+    .where(and(eq(slots.resourceId, resourceId), gt(slots.endsAt, now), isNull(resources.retiredAt)))
     .orderBy(asc(slots.startsAt), asc(slots.id));
 }

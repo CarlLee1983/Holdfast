@@ -210,7 +210,7 @@ describe("listResourcesForAdmin", () => {
 
     expect(result).toEqual({
       ok: true,
-      data: [{ id, name: "大廳", holdTtlSeconds: 600, seatsPerHold: 4, cancellationCutoffSeconds: 3600, description: null }],
+      data: [{ id, name: "大廳", holdTtlSeconds: 600, seatsPerHold: 4, cancellationCutoffSeconds: 3600, description: null, retiredAt: null }],
     });
   });
 });
@@ -721,7 +721,7 @@ describe("getResourceForAdmin", () => {
     await app.createResource(jwt, { ...validResource, name: "包廂" });
     if (!created.ok) throw new Error("建立資源失敗");
 
-    expect(await app.getResourceForAdmin(jwt, created.data.id)).toEqual({ ok: true, data: created.data });
+    expect(await app.getResourceForAdmin(jwt, created.data.id)).toEqual({ ok: true, data: { ...created.data, retiredAt: null, futureBookingCount: 0 } });
   });
 
   it.each([["NaN", Number.NaN], ["非整數", 1.5]])("資源編號是%s：回傳 invalid_input", async (_label, id) => {

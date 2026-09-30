@@ -3,7 +3,6 @@ import BookingDetails from "../../components/BookingDetails.astro";
 import MemberLayout from "../../layouts/MemberLayout.astro";
 import { env } from "cloudflare:workers";
 import { loginUrl } from "../../auth/member";
-import { loadCatalog } from "../../catalog/load-catalog";
 import { formatTaipeiDateTime } from "../../catalog/taipei-time";
 import { cancellationRuleText } from "../../holds/cancellation";
 import { handleConfirmPost } from "../../holds/confirm";
@@ -29,9 +28,7 @@ if (Astro.request.method === "POST") {
 // RPC 回報失敗時直接丟出，不把故障顯示成「保留不存在」
 const result = await env.APP.listMyHolds(member.memberId);
 if (!result.ok) throw new Error(`listMyHolds 失敗：${result.reason}`);
-const catalog = await loadCatalog(env.APP);
-
-const state = holdPageState(result.data, Astro.params.id, catalog);
+const state = holdPageState(result.data, Astro.params.id);
 // 保留與訂位是同一筆資料、同一個 id：不是有效保留、卻是自己的訂位（已確認，或重複送出後重新渲染），就導到完成頁。
 // 只有在這個情況才多查一次 listMyBookings
 if (state.kind === "unavailable") {
@@ -61,7 +58,7 @@ const now = Date.now();
       <div
         class="hold-page"
         data-remaining-ms={state.hold.expiresAt - now}
-        data-label={`${state.resource.name} ${formatTaipeiDateTime(state.hold.startsAt)}`}
+        data-label={`${state.hold.resourceName} ${formatTaipeiDateTime(state.hold.startsAt)}`}
       >
         <header class="head">
           <h1>確認訂位</h1>
@@ -80,8 +77,8 @@ const now = Date.now();
           startsAt={state.hold.startsAt}
           endsAt={state.hold.endsAt}
           seats={state.hold.seats}
-          resourceName={state.resource.name}
-          description={state.resource.description}
+          resourceName={state.hold.resourceName}
+          description={state.hold.resourceDescription}
         />
 
         <p class="as-member">以{member.name}的身分訂位</p>
@@ -89,8 +86,8 @@ const now = Date.now();
         <section class="list-section" aria-labelledby="notes-heading">
           <h2 id="notes-heading">訂位須知</h2>
           <ul class="rule-list">
-            <li class="rule-item">{holdTtlRuleText(state.resource.holdTtlSeconds)}</li>
-            <li class="rule-item">{cancellationRuleText(state.resource.cancellationCutoffSeconds)}</li>
+            <li class="rule-item">{holdTtlRuleText(state.hold.holdTtlSeconds)}</li>
+            <li class="rule-item">{cancellationRuleText(state.hold.cancellationCutoffSeconds)}</li>
             <li class="rule-item">超過取消時限請來電 {MERCHANT.phone}</li>
           </ul>
         </section>

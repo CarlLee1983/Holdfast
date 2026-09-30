@@ -1,7 +1,7 @@
 import { sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import type { z } from "zod";
-import { resourceExists, selectResource, selectResources, type ResourceSummary } from "../catalog/queries";
+import { resourceExists, selectResource, selectResourcesForAdmin, type AdminResourceSummary, type ResourceSummary } from "../catalog/queries";
 import type { Clock } from "../shared/clock";
 import { fail, ok, type InvalidInput, type Result } from "../shared/result";
 import { createAccessVerifier, type AccessConfig, type AccessIdentity } from "./access";
@@ -27,6 +27,7 @@ import {
   updateSlotTimeInput,
 } from "./input";
 import {
+  selectFutureBookingCount,
   selectAdminAudit,
   selectAdminSlots,
   selectAgenda,
@@ -202,6 +203,26 @@ export function createAdminService(d1: D1Database, clock: Clock, accessConfig: A
     );
   }
 
+  /** 狀態與稽核在同一個 batch：重送或並行操作只在真的變更時寫稽核。 */
+  async function changeRetirement(actor: AccessIdentity, id: number, retire: boolean): Promise<Result<{ id: number; retiredAt: number | null }, "resource_not_found">> {
+    const now = clock.now();
+    const retiredAt = retire ? now : null;
+    const action = retire ? "resource.retire" : "resource.reactivate";
+    const detail = { retiredAt };
+    const [update] = await d1.batch<{ id: number; retiredAt: number | null }>([
+      d1.prepare(`UPDATE resources SET retired_at = ? WHERE id = ? AND retired_at IS ${retire ? "NULL" : "NOT NULL"} RETURNING id, retired_at AS retiredAt`).bind(retiredAt, id),
+      d1.prepare(`INSERT INTO admin_audit (${AUDIT_COLUMNS}) SELECT ?, ?, 'resource', ?, ?, ? WHERE changes() > 0`)
+        .bind(actor.email, action, id, now, JSON.stringify(detail)),
+    ]);
+    const changed = update!.results[0];
+    if (changed) {
+      logAudit(actor, action, "resource", id, detail);
+      return ok(changed);
+    }
+    const resource = await selectResource(db, id);
+    return resource ? ok({ id, retiredAt: resource.retiredAt }) : fail("resource_not_found");
+  }
+
   return {
     listAuditForAdmin(jwt: unknown, input: unknown): Promise<AdminResult<{ rows: AdminAuditRecord[]; nextCursor: number | null }>> {
       return authorized(jwt, listAuditInput, input, async (_actor, { cursor }) => ok(await selectAdminAudit(d1, cursor)));
@@ -266,20 +287,32 @@ export function createAdminService(d1: D1Database, clock: Clock, accessConfig: A
       });
     },
 
-    async listResourcesForAdmin(jwt: unknown): Promise<AdminResult<ResourceSummary[]>> {
+    async listResourcesForAdmin(jwt: unknown): Promise<AdminResult<AdminResourceSummary[]>> {
       const auth = await verifier.verify(jwt);
       if (!auth.ok) return auth;
-      return ok(await selectResources(db));
+      return ok(await selectResourcesForAdmin(db));
     },
 
     getResourceForAdmin(
       jwt: unknown,
       resourceId: number,
-    ): Promise<AdminResult<ResourceSummary, "resource_not_found">> {
+    ): Promise<AdminResult<AdminResourceSummary & { futureBookingCount: number }, "resource_not_found">> {
       return authorized(jwt, getResourceInput, resourceId, async (_actor, id) => {
         const resource = await selectResource(db, id);
-        return resource ? ok(resource) : fail("resource_not_found");
+        return resource ? ok({ ...resource, futureBookingCount: await selectFutureBookingCount(d1, id, clock.now()) }) : fail("resource_not_found");
       });
+    },
+
+    retireResource(jwt: unknown, resourceId: unknown): Promise<AdminResult<{ id: number; retiredAt: number | null; futureBookingCount: number }, "resource_not_found">> {
+      return authorized(jwt, getResourceInput, resourceId, async (actor, id) => {
+        const state = await changeRetirement(actor, id, true);
+        if (!state.ok) return state;
+        return ok({ ...state.data, futureBookingCount: await selectFutureBookingCount(d1, id, clock.now()) });
+      });
+    },
+
+    reactivateResource(jwt: unknown, resourceId: unknown): Promise<AdminResult<{ id: number; retiredAt: number | null }, "resource_not_found">> {
+      return authorized(jwt, getResourceInput, resourceId, (actor, id) => changeRetirement(actor, id, false));
     },
 
     createResource(jwt: unknown, input: unknown): Promise<AdminResult<ResourceSummary>> {
@@ -322,7 +355,7 @@ export function createAdminService(d1: D1Database, clock: Clock, accessConfig: A
     createSlot(
       jwt: unknown,
       input: unknown,
-    ): Promise<AdminResult<SlotRecord, "resource_not_found" | "slot_overlaps">> {
+    ): Promise<AdminResult<SlotRecord, "resource_not_found" | "resource_retired" | "slot_overlaps">> {
       return authorized(jwt, createSlotInput, input, async (actor, slot) => {
         // 重疊檢查與寫入是同一句 INSERT … SELECT（ADR 0004 的做法），以 meta.changes 判斷成敗，不先讀再寫
         const [insert] = await d1.batch([
@@ -330,16 +363,16 @@ export function createAdminService(d1: D1Database, clock: Clock, accessConfig: A
             d1,
             sql`INSERT INTO slots (resource_id, starts_at, ends_at, capacity)
                SELECT ${slot.resourceId}, ${slot.startsAt}, ${slot.endsAt}, ${slot.capacity}
-               WHERE EXISTS (SELECT 1 FROM resources WHERE id = ${slot.resourceId})
+               WHERE EXISTS (SELECT 1 FROM resources WHERE id = ${slot.resourceId} AND retired_at IS NULL)
                  AND ${noOverlappingSlot(slot.resourceId, slot.startsAt, slot.endsAt)}`,
           ),
           auditAfterInsert(actor, "slot.create", "slot", slot),
         ]);
         if (insert!.meta.changes === 0) {
           // 寫入失敗之後才分辨原因（只用來選 reason，不影響是否寫入）
-          return (await resourceExists(db, slot.resourceId))
-            ? fail("slot_overlaps")
-            : fail("resource_not_found");
+          const resource = await selectResource(db, slot.resourceId);
+          if (!resource) return fail("resource_not_found");
+          return fail(resource.retiredAt !== null ? "resource_retired" : "slot_overlaps");
         }
         const id = insert!.meta.last_row_id;
         logAudit(actor, "slot.create", "slot", id, slot);

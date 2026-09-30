@@ -78,7 +78,7 @@ const createSlotHref = resourceId === undefined ? "/admin/resources" : `/admin/r
             資源
             <select name="resource">
               <option value="">全部資源</option>
-              {resourceList.map((r) => <option value={r.id} selected={r.id === resourceId}>{r.name}</option>)}
+              {resourceList.map((r) => <option value={r.id} selected={r.id === resourceId}>{r.name}{r.retiredAt !== null ? "（已停用）" : ""}</option>)}
             </select>
           </label>
           <button type="submit">顯示</button>
@@ -97,6 +97,7 @@ const createSlotHref = resourceId === undefined ? "/admin/resources" : `/admin/r
                       {formatTaipeiTime(slot.startsAt)}–{formatTaipeiTime(slot.endsAt)}
                     </a>
                     <span>{slot.resourceName}</span>
+                    {slot.resourceRetiredAt !== null && <span class="tag tag--quiet">已停用</span>}
                     <span class="agenda-count">{slot.occupied}／{slot.capacity}（剩 {slot.remainingSeats}）</span>
                     {slot.overcommitted && <span class="tag agenda-over">超占</span>}
                   </div>
