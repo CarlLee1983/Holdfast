@@ -16,10 +16,11 @@ import {
   deleteSlotInput,
   getResourceInput,
   listSlotHoldsAndBookingsInput,
+  listAuditInput,
   updateResourceInput,
   updateSlotCapacityInput,
 } from "./input";
-import { selectAdminSlots, slotExists, type AdminSlot } from "./queries";
+import { selectAdminAudit, selectAdminSlots, slotExists, type AdminAuditRecord, type AdminSlot } from "./queries";
 
 export interface SlotRecord {
   id: number;
@@ -168,6 +169,9 @@ export function createAdminService(d1: D1Database, clock: Clock, accessConfig: A
   }
 
   return {
+    listAuditForAdmin(jwt: unknown, input: unknown): Promise<AdminResult<{ rows: AdminAuditRecord[]; nextCursor: number | null }>> {
+      return authorized(jwt, listAuditInput, input, async (_actor, { cursor }) => ok(await selectAdminAudit(d1, cursor)));
+    },
     listSlotHoldsAndBookingsForAdmin(jwt: unknown, input: unknown): Promise<AdminResult<SlotHoldsAndBookings, "slot_not_found">> {
       return authorized(jwt, listSlotHoldsAndBookingsInput, input, async (_actor, { slotId }) => {
         const slot = await d1.prepare(

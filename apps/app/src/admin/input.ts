@@ -98,3 +98,8 @@ export type UpdateSlotCapacityInput = z.output<typeof updateSlotCapacityInput>;
 export type DeleteSlotInput = z.output<typeof deleteSlotInput>;
 
 export const getResourceInput = resourceId;
+
+/** 稽核頁使用上一頁最後一筆 ID；省略 cursor 代表最新紀錄。 */
+export const listAuditInput = z.object({
+  cursor: z.number({ error: "游標必須是數字" }).int("游標必須是整數").safe("游標超出安全範圍").positive("游標必須大於 0").optional(),
+});

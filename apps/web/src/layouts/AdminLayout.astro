@@ -10,7 +10,10 @@ interface Props {
 const { title } = Astro.props;
 
 // 導覽列標出目前所在的區塊；路徑以 prefixes 的前綴比對（時段頁屬於資源區塊），之後新增區塊在這裡加一列
-const sections = [{ label: "資源", href: "/admin/resources", prefixes: ["/admin/resources", "/admin/slots"] }];
+const sections = [
+  { label: "資源", href: "/admin/resources", prefixes: ["/admin/resources", "/admin/slots"] },
+  { label: "稽核紀錄", href: "/admin/audit", prefixes: ["/admin/audit"] },
+];
 const { pathname } = Astro.url;
 // 剛好在區塊頁本身是 "page"；在區塊底下的子頁是 "true"（仍屬於該區塊，但不是當前這一頁）
 const current = (href: string, prefixes: string[]) =>

@@ -120,6 +120,10 @@ export class AppEntrypoint extends WorkerEntrypoint<Env> {
     return this.#admin().listResourcesForAdmin(jwt);
   }
 
+  listAuditForAdmin(jwt: string, input: unknown) {
+    return this.#admin().listAuditForAdmin(jwt, input);
+  }
+
   getResourceForAdmin(jwt: string, resourceId: number) {
     return this.#admin().getResourceForAdmin(jwt, resourceId);
   }
