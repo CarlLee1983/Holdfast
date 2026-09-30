@@ -9,7 +9,13 @@ describe("資源表單轉 RPC 輸入", () => {
       resourceFormToInput(
         form({ name: "大廳", holdTtlSeconds: "", seatsPerHold: "4", cancellationCutoffSeconds: "7200" }),
       ),
-    ).toEqual({ name: "大廳", seatsPerHold: 4, cancellationCutoffSeconds: 7200 });
+    ).toEqual({ name: "大廳", seatsPerHold: 4, cancellationCutoffSeconds: 7200, description: "" });
+  });
+
+  it("說明原樣帶上（長度由 App 驗證）；沒有這個欄位時為空字串", () => {
+    const base = { name: "大廳", seatsPerHold: "4", cancellationCutoffSeconds: "0" };
+    expect(resourceFormToInput(form({ ...base, description: "長桌" })).description).toBe("長桌");
+    expect(resourceFormToInput(form(base)).description).toBe("");
   });
 
   it("有填保留期限就帶上", () => {
@@ -34,7 +40,7 @@ describe("資源表單轉 RPC 輸入", () => {
         form({ name: "大廳", holdTtlSeconds: "600", seatsPerHold: "4", cancellationCutoffSeconds: "0" }),
         3,
       ),
-    ).toEqual({ id: 3, name: "大廳", holdTtlSeconds: 600, seatsPerHold: 4, cancellationCutoffSeconds: 0 });
+    ).toEqual({ id: 3, name: "大廳", holdTtlSeconds: 600, seatsPerHold: 4, cancellationCutoffSeconds: 0, description: "" });
   });
 });
 

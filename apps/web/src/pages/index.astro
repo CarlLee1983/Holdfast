@@ -7,6 +7,7 @@ import { slotAvailability } from "../catalog/slot-status";
 import { formatTaipeiTime } from "../catalog/taipei-time";
 import { loginUrl } from "../auth/member";
 import { handleHoldPost } from "../holds/submit";
+import { cancellationRuleText } from "../holds/cancel-rule";
 
 export const prerender = false;
 
@@ -76,6 +77,22 @@ const dateGroups = groupSlotsByTaipeiDate(flattenCatalog(catalog));
         </ul>
       </section>
     ))
+  }
+  {
+    catalog.length > 0 && (
+      <section aria-labelledby="notes-heading">
+        <h2 id="notes-heading">訂位須知</h2>
+        <ul>
+          {catalog.map(({ resource }) => (
+            <li>
+              <h3>{resource.name}</h3>
+              {resource.description && <p>{resource.description}</p>}
+              <p>{cancellationRuleText(resource.cancellationCutoffSeconds)}</p>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )
   }
 </MemberLayout>
 
