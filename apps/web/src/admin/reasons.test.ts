@@ -10,6 +10,9 @@ describe("管理 RPC 失敗原因轉成給管理者看的訊息", () => {
     ["slot_in_use", "時段仍有保留或訂位紀錄（過期或已釋放的保留除外）"],
     ["member_not_found", "找不到這位會員"],
     ["slot_started", "時段已開始，無法取消"],
+    ["slot_batch_empty", "區間內沒有符合條件的時段，請調整日期、星期或開始時間"],
+    ["slot_batch_too_large", "一次最多產生 200 個時段，請縮短區間或減少開始時間"],
+    ["slot_batch_overlaps_itself", "這批時段彼此重疊（時段長度大於開始時間的間隔），請調整"],
   ])("%s 有具名的友善訊息", (reason, text) => {
     expect(describeFailure({ ok: false, reason })).toEqual({ message: text, fields: {} });
   });

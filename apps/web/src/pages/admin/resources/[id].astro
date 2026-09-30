@@ -4,6 +4,7 @@ import { readAccessJwt } from "../../../admin/access-jwt";
 import {
   formToRecord,
   resourceFormToInput,
+  slotBatchFormToInput,
   slotCapacityFormToInput,
   slotFormToInput,
   slotIdFormToInput,
@@ -11,9 +12,11 @@ import {
 } from "../../../admin/forms";
 import { describeFailure, type Failure } from "../../../admin/reasons";
 import { formatTaipeiDateTimeInput } from "../../../admin/taipei-input";
+import type { SlotTimes } from "../../../admin/slot-batch-view";
 import { describeOccupancy } from "../../../admin/slot-occupancy";
 import { formatTaipeiDate, formatTaipeiTime } from "../../../catalog/taipei-time";
 import AccessDenied from "../../../components/AccessDenied.astro";
+import SlotBatchTable from "../../../components/SlotBatchTable.astro";
 import ResourceForm from "../../../components/ResourceForm.astro";
 import AdminLayout from "../../../layouts/AdminLayout.astro";
 
@@ -26,12 +29,17 @@ let resourceFailure: Failure | undefined;
 let retirementFailure: Failure | undefined;
 let slotFailure: Failure | undefined;
 let rowFailure: Failure | undefined;
+let batchFailure: Failure | undefined;
+let batchPreview: { slots: SlotTimes[]; skipped: SlotTimes[] } | undefined;
+let batchResult: { slots: SlotTimes[]; skipped: SlotTimes[] } | undefined;
+let submittedWeekdays: string[] = [];
 let submitted: Record<string, string> = {};
 let notice = "";
 
 if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
   submitted = formToRecord(form);
+  submittedWeekdays = form.getAll("weekdays").map(String);
   const intent = form.get("intent");
 
   if (intent === "update-resource") {
@@ -50,6 +58,14 @@ if (Astro.request.method === "POST") {
     const result = await env.APP.createSlot(jwt, slotFormToInput(form, resourceId));
     if (result.ok) return Astro.redirect(`/admin/resources/${resourceId}?saved=slot`, 303);
     if (result.reason !== "unauthorized") slotFailure = describeFailure(result);
+  } else if (intent === "preview-batch") {
+    const result = await env.APP.previewSlotBatch(jwt, slotBatchFormToInput(form, resourceId));
+    if (result.ok) batchPreview = result.data;
+    else if (result.reason !== "unauthorized") batchFailure = describeFailure(result);
+  } else if (intent === "create-batch") {
+    const result = await env.APP.createSlotBatch(jwt, slotBatchFormToInput(form, resourceId));
+    if (result.ok) batchResult = result.data;
+    else if (result.reason !== "unauthorized") batchFailure = describeFailure(result);
   } else if (intent === "update-capacity") {
     const result = await env.APP.updateSlotCapacity(jwt, slotCapacityFormToInput(form));
     if (result.ok) return Astro.redirect(`/admin/resources/${resourceId}?saved=capacity`, 303);
@@ -89,6 +105,19 @@ const rowFailureSlotId = Number(submitted.slotId);
 const refill = (slotId: number, field: string, current: string | number) =>
   rowFailure && rowFailureSlotId === slotId && submitted.intent === "update-time" ? (submitted[field] ?? "") : current;
 const slotErrors = slotFailure?.fields ?? {};
+const batchErrors = batchFailure?.fields ?? {};
+/** 預覽成功或失敗時都回填使用者輸入；建立成功後清空表單。 */
+const batchValues = batchResult ? {} : submitted.intent === "preview-batch" || submitted.intent === "create-batch" ? submitted : {};
+const batchWeekdays = batchResult ? [] : submittedWeekdays;
+const weekdayOptions = [
+  { value: "1", label: "一" },
+  { value: "2", label: "二" },
+  { value: "3", label: "三" },
+  { value: "4", label: "四" },
+  { value: "5", label: "五" },
+  { value: "6", label: "六" },
+  { value: "0", label: "日" },
+];
 ---
 
 <AdminLayout title={resource ? resource.name : "資源"}>
@@ -219,6 +248,87 @@ const slotErrors = slotFailure?.fields ?? {};
               </label>
               <p><button type="submit">建立時段</button></p>
             </form>
+            <h3>批次建立時段</h3>
+            <form method="post">
+              <input type="hidden" name="intent" value="preview-batch" />
+              {batchFailure && <p class="error" role="alert">{batchFailure.message}</p>}
+              <label>
+                從（日期）
+                <input type="date" name="fromDate" value={batchValues.fromDate ?? ""} required />
+                {batchErrors.fromDate?.map((m) => <span class="error">{m}</span>)}
+              </label>
+              <label>
+                到（日期）
+                <input type="date" name="toDate" value={batchValues.toDate ?? ""} required />
+                {batchErrors.toDate?.map((m) => <span class="error">{m}</span>)}
+              </label>
+              <fieldset>
+                <legend>星期幾</legend>
+                {weekdayOptions.map((d) => (
+                  <label>
+                    <input type="checkbox" name="weekdays" value={d.value} checked={batchWeekdays.includes(d.value)} />
+                    {d.label}
+                  </label>
+                ))}
+                {batchErrors.weekdays?.map((m) => <span class="error">{m}</span>)}
+              </fieldset>
+              <label>
+                開始時間
+                <input name="startTimes" placeholder="18:00, 20:00" value={batchValues.startTimes ?? ""} required />
+                {batchErrors.startTimes?.map((m) => <span class="error">{m}</span>)}
+              </label>
+              <p>台北時間，以逗號、頓號或空白分隔</p>
+              <label>
+                時段長度（分鐘）
+                <input name="durationMinutes" inputmode="numeric" value={batchValues.durationMinutes ?? ""} required />
+                {batchErrors.durationMinutes?.map((m) => <span class="error">{m}</span>)}
+              </label>
+              <label>
+                容量
+                <input name="capacity" inputmode="numeric" value={batchValues.capacity ?? ""} required />
+                {batchErrors.capacity?.map((m) => <span class="error">{m}</span>)}
+              </label>
+              <p><button type="submit">預覽</button></p>
+            </form>
+            {batchPreview && (
+              <>
+                <h4>將建立 {batchPreview.slots.length} 個時段</h4>
+                {batchPreview.slots.length > 0 && <SlotBatchTable slots={batchPreview.slots} />}
+                {batchPreview.skipped.length > 0 && (
+                  <>
+                    <h4>因與既有時段重疊而跳過 {batchPreview.skipped.length} 個</h4>
+                    <SlotBatchTable slots={batchPreview.skipped} />
+                  </>
+                )}
+                {batchPreview.slots.length > 0 ? (
+                  <form method="post">
+                    <input type="hidden" name="intent" value="create-batch" />
+                    <input type="hidden" name="fromDate" value={submitted.fromDate ?? ""} />
+                    <input type="hidden" name="toDate" value={submitted.toDate ?? ""} />
+                    {submittedWeekdays.map((d) => <input type="hidden" name="weekdays" value={d} />)}
+                    <input type="hidden" name="startTimes" value={submitted.startTimes ?? ""} />
+                    <input type="hidden" name="durationMinutes" value={submitted.durationMinutes ?? ""} />
+                    <input type="hidden" name="capacity" value={submitted.capacity ?? ""} />
+                    <p><button type="submit">確認建立</button></p>
+                  </form>
+                ) : (
+                  <p>符合條件的時段都與既有時段重疊，沒有可建立的時段；請調整日期、星期或開始時間。</p>
+                )}
+              </>
+            )}
+            {batchResult && (
+              <>
+                <p class="notice" role="status">已建立 {batchResult.slots.length} 個時段</p>
+                {batchResult.slots.length > 0 && <SlotBatchTable slots={batchResult.slots} />}
+                {batchResult.skipped.length > 0 && (
+                  <>
+                    <h4>跳過 {batchResult.skipped.length} 個</h4>
+                    <p>這些時段與既有時段重疊，可能是預覽後才有人建立了重疊的時段。</p>
+                    <SlotBatchTable slots={batchResult.skipped} />
+                  </>
+                )}
+              </>
+            )}
           </>
         ) : <p>資源已停用，無法建立新時段。</p>}
       </>

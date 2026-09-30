@@ -1,0 +1,15 @@
+---
+import { slotBatchRows, type SlotTimes } from "../admin/slot-batch-view";
+
+interface Props {
+  slots: readonly SlotTimes[];
+}
+const rows = slotBatchRows(Astro.props.slots);
+---
+
+<div class="table-scroll">
+  <table>
+    <thead><tr><th>日期</th><th>時間</th></tr></thead>
+    <tbody>{rows.map((r) => <tr><td>{r.date}</td><td>{r.time}</td></tr>)}</tbody>
+  </table>
+</div>
