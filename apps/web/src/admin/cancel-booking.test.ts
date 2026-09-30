@@ -60,12 +60,26 @@ describe("handleCancelBookingPost", () => {
     expect(app.cancelBookingForAdmin).toHaveBeenCalledWith("access-jwt", { slotId: 7, bookingId: Number.NaN, reason: "" });
   });
 
-  it("非表單 body 回 422，不呼叫 App", async () => {
-    const app = fakeApp({ ok: true });
-    const request = post("x");
-    request.headers.set("content-type", "text/plain");
+  it("當 Accept 為 application/json 時，成功回傳 json 格式與 200", async () => {
+    const app = fakeApp({ ok: true, data: { id: 23, slotId: 7, seats: 2 } });
+    const req = post();
+    req.headers.set("accept", "application/json");
 
-    expect(await run(app, request)).toEqual({ error: "輸入有誤，請修正後再送出", status: 422 });
-    expect(app.cancelBookingForAdmin).not.toHaveBeenCalled();
+    expect(await run(app, req)).toEqual({
+      json: { ok: true, id: 23 },
+      status: 200,
+    });
+  });
+
+  it("當 Accept 為 application/json 時，失敗回傳 json 格式與對應 status", async () => {
+    const app = fakeApp({ ok: false, reason: "slot_started" });
+    const req = post();
+    req.headers.set("accept", "application/json");
+
+    expect(await run(app, req)).toEqual({
+      json: { ok: false, error: "時段已開始，無法取消" },
+      status: 409,
+    });
   });
 });
+

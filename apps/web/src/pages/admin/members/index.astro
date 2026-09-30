@@ -21,7 +21,27 @@ else if (result && !result.ok) Astro.response.status = failureStatus(result.reas
 const members = result?.ok ? result.data : [];
 const failureMessage =
   result && !result.ok && !unauthorized ? withFirstFieldDetail(describeFailure(result).message, result.fields ?? {}) : null;
+
+if (Astro.request.headers.get("accept")?.includes("application/json")) {
+  if (unauthorized) {
+    return new Response(JSON.stringify({ ok: false, error: "unauthorized" }), {
+      status: 403,
+      headers: { "content-type": "application/json" },
+    });
+  }
+  if (result && !result.ok) {
+    return new Response(JSON.stringify({ ok: false, error: failureMessage }), {
+      status: failureStatus(result.reason),
+      headers: { "content-type": "application/json" },
+    });
+  }
+  return new Response(JSON.stringify({ ok: true, data: members }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+}
 ---
+
 
 <AdminLayout title="查會員">
   {

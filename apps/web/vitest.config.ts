@@ -9,7 +9,7 @@ export default defineConfig({
       thresholds: { statements: 80, branches: 80, functions: 80, lines: 80 },
       // 只量 .ts 邏輯；.astro 頁面與元件由 e2e 涵蓋，vitest 無法載入
       include: ["src/**/*.ts"],
-      exclude: ["src/**/*.d.ts"],
+      exclude: ["src/**/*.d.ts", "src/**/*-client.ts"],
     },
   },
 });

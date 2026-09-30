@@ -1,0 +1,40 @@
+---
+// 管理後台全域共用的抽屜與取消彈窗（漸進增強，在有 JS 時提供原地流暢互動）
+---
+
+<div id="admin-slot-drawer" class="admin-drawer" aria-hidden="true">
+  <div class="admin-drawer-backdrop" tabindex="-1"></div>
+  <aside class="admin-drawer-panel" aria-label="時段詳細動態" role="region">
+    <div class="admin-drawer-header">
+      <h2>時段資訊與名額</h2>
+      <button type="button" class="admin-drawer-close" aria-label="關閉抽屜">✕</button>
+    </div>
+    <div class="admin-drawer-body">
+      <!-- 內容由 admin-drawer-client.ts 填入 -->
+    </div>
+  </aside>
+</div>
+
+<dialog id="admin-cancel-dialog" class="admin-dialog">
+  <form method="post" class="dialog-form">
+    <h3>確認取消此筆訂位</h3>
+    <p class="dialog-subtext">取消後將結束訂位並立即釋出名額，此動作無法復原。</p>
+    <p class="cancel-target-desc"></p>
+    <input type="hidden" name="slotId" value="" />
+    <input type="hidden" name="bookingId" value="" />
+    <label>
+      取消原因（選填，會員看得到）
+      <input type="text" name="reason" maxlength="200" placeholder="例如：顧客來電告知臨時取消、店面消毒" />
+    </label>
+    <p class="error dialog-error" style="display:none;" role="alert"></p>
+    <div class="dialog-actions">
+      <button type="button" class="dialog-close-btn">維持訂位</button>
+      <button type="submit" class="danger">確認取消</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+  import { initAdminDrawer } from "../admin/admin-drawer-client";
+  initAdminDrawer();
+</script>

@@ -11,16 +11,26 @@ import AccessDenied from "../../components/AccessDenied.astro";
 import CancelBookingForm from "../../components/CancelBookingForm.astro";
 import AdminLayout from "../../layouts/AdminLayout.astro";
 
+import { groupSlotsByResource } from "../../admin/agenda-matrix";
+import AdminSlotDrawer from "../../components/AdminSlotDrawer.astro";
+
 export const prerender = false;
 
 // 授權完全由 App Worker 驗 JWT 決定；這裡只轉交 header，收到 unauthorized 就顯示 403
 const jwt = readAccessJwt(Astro.request, env, import.meta.env.DEV);
 const params = Astro.url.searchParams;
-const dateKey = parseDateParam(params.get("date"), taipeiDateKey(Date.now()));
+const todayKey = taipeiDateKey(Date.now());
+const dateKey = parseDateParam(params.get("date"), todayKey);
 const resourceId = parseResourceParam(params.get("resource"));
+const viewMode = params.get("view") === "matrix" ? "matrix" : "list";
+
 const range = taipeiDayRange(dateKey);
-// 前後一天的連結保留資源篩選；取消後也回到同一天、同一個篩選
-const dayHref = (key: string) => `/admin?date=${key}${resourceId === undefined ? "" : `&resource=${resourceId}`}`;
+// 前後一天的連結保留資源篩選與視圖；取消後也回到同一天、同一個篩選
+const dayHref = (key: string) =>
+  `/admin?date=${key}${resourceId === undefined ? "" : `&resource=${resourceId}`}${viewMode === "matrix" ? "&view=matrix" : ""}`;
+const viewHref = (view: string) =>
+  `/admin?date=${dateKey}${resourceId === undefined ? "" : `&resource=${resourceId}`}${view === "matrix" ? "&view=matrix" : ""}`;
+
 
 let cancelError = "";
 if (Astro.request.method === "POST") {
@@ -31,6 +41,12 @@ if (Astro.request.method === "POST") {
     successUrl: (id) => `${dayHref(dateKey)}&cancelled=${id}`,
   });
   if ("redirect" in outcome) return Astro.redirect(outcome.redirect, outcome.status);
+  if ("json" in outcome) {
+    return new Response(JSON.stringify(outcome.json), {
+      status: outcome.status,
+      headers: { "content-type": "application/json" },
+    });
+  }
   cancelError = outcome.error;
   Astro.response.status = outcome.status;
 }
@@ -56,6 +72,11 @@ const cancelledNotice =
 const expiryLabel = (at: number) => (at >= range.from && at < range.to ? formatTaipeiTime(at) : formatTaipeiDateTime(at));
 // 篩選了資源時，空狀態直接連到該資源的頁面建立時段
 const createSlotHref = resourceId === undefined ? "/admin/resources" : `/admin/resources/${resourceId}`;
+
+const matrixGroups = groupSlotsByResource(
+  slots,
+  resourceId !== undefined ? resourceList.filter((r) => r.id === resourceId) : resourceList,
+);
 ---
 
 <AdminLayout title="日程表">
@@ -66,39 +87,109 @@ const createSlotHref = resourceId === undefined ? "/admin/resources" : `/admin/r
       <>
         <nav class="agenda-nav" aria-label="切換日期">
           <a href={dayHref(adjacentDateKey(dateKey, -1))}>前一天</a>
-          <h2>{formatTaipeiDate(range.from)}</h2>
+          <div class="agenda-date-heading">
+            <h2>{formatTaipeiDate(range.from)}</h2>
+            {dateKey !== todayKey && (
+              <a class="tag tag--quiet" href={dayHref(todayKey)}>
+                回到今天
+              </a>
+            )}
+          </div>
           <a href={dayHref(adjacentDateKey(dateKey, 1))}>後一天</a>
         </nav>
         {cancelledNotice && <p class="notice" role="status">訂位已取消，名額已歸還。</p>}
         {cancelError && <p class="error" role="alert">{cancelError}</p>}
         {resourcesFailed && <p class="error" role="alert">資源清單暫時無法載入，無法依資源篩選。</p>}
-        <form class="agenda-filter" method="get" action="/admin">
-          <label>日期<input type="date" name="date" value={dateKey} required /></label>
-          <label>
-            資源
-            <select name="resource">
-              <option value="">全部資源</option>
-              {resourceList.map((r) => <option value={r.id} selected={r.id === resourceId}>{r.name}{r.retiredAt !== null ? "（已停用）" : ""}</option>)}
-            </select>
-          </label>
-          <button type="submit">顯示</button>
-        </form>
+
+        <div class="agenda-view-controls">
+          <form class="agenda-filter" method="get" action="/admin">
+            <input type="hidden" name="view" value={viewMode} />
+            <label>日期<input type="date" name="date" value={dateKey} required /></label>
+            <label>
+              資源
+              <select name="resource">
+                <option value="">全部資源</option>
+                {resourceList.map((r) => <option value={r.id} selected={r.id === resourceId}>{r.name}{r.retiredAt !== null ? "（已停用）" : ""}</option>)}
+              </select>
+            </label>
+            <button type="submit">顯示</button>
+          </form>
+
+          <div class="view-tabs" role="tablist" aria-label="檢視方式">
+            <a class={`view-tab-btn ${viewMode === "matrix" ? "is-active" : ""}`} href={viewHref("matrix")}>
+              時間軸看板
+            </a>
+            <a class={`view-tab-btn ${viewMode === "list" ? "is-active" : ""}`} href={viewHref("list")}>
+              清單
+            </a>
+          </div>
+        </div>
+
         {
           !agenda.ok ? (
             <p class="error" role="alert">日程表暫時無法載入。</p>
           ) : slots.length === 0 ? (
             <p>這一天沒有時段。<a href={createSlotHref}>到資源頁建立時段</a></p>
+          ) : viewMode === "matrix" ? (
+            <div class="matrix-container">
+              {matrixGroups.map((group) => (
+                <div class="matrix-resource-block">
+                  <div class="matrix-resource-title">
+                    <h3>{group.resource.name} {group.resource.retiredAt !== null && <span class="tag tag--quiet">已停用</span>}</h3>
+                    <a href={`/admin/resources/${group.resource.id}`}>管理資源時段 →</a>
+                  </div>
+                  {group.slots.length === 0 ? (
+                    <p class="empty-state">這天尚無時段。<a href={`/admin/resources/${group.resource.id}`}>建立時段</a></p>
+                  ) : (
+                    <div class="matrix-slots-grid">
+                      {group.slots.map((slot) => {
+                        const pct = Math.min(100, slot.capacity > 0 ? (slot.occupied / slot.capacity) * 100 : 0);
+                        return (
+                          <a
+                            class="slot-card"
+                            href={`/admin/slots/${slot.id}`}
+                            data-slot-trigger
+                            data-slot-id={slot.id}
+                          >
+                            <div class="slot-card-head">
+                              <span class="slot-card-time">{formatTaipeiTime(slot.startsAt)}–{formatTaipeiTime(slot.endsAt)}</span>
+                              <span class="slot-occupied-count">{slot.occupied}／{slot.capacity}</span>
+                            </div>
+                            <div class="progress-track">
+                              <div class="slot-progress-bar" style={`width: ${pct}%`} />
+                            </div>
+                            <div class="slot-card-counts">
+                              <span class="slot-remaining-count">剩 {slot.remainingSeats} 位</span>
+                              <span>{slot.bookings.length} 訂位{slot.holds.length > 0 ? `・${slot.holds.length} 保留` : ""}</span>
+                            </div>
+                            <div class="slot-card-badges">
+                              {slot.overcommitted && <span class="tag agenda-over tag-overcommitted is-visible">超占</span>}
+                              {slot.remainingSeats === 0 && <span class="tag tag--quiet">滿位</span>}
+                              {slot.startsAt <= now && <span class="tag tag--quiet">已開始</span>}
+                            </div>
+                            <script type="application/json" id={`slot-data-${slot.id}`} set:html={JSON.stringify(slot)} />
+                          </a>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           ) : (
             <ol class="agenda">
               {slots.map((slot) => (
-                <li class="agenda-slot">
+                <li class="agenda-slot" data-slot-id={slot.id}>
                   <div class="agenda-head">
-                    <a class="agenda-time" href={`/admin/slots/${slot.id}`}>
+                    <a class="agenda-time" href={`/admin/slots/${slot.id}`} data-slot-trigger data-slot-id={slot.id}>
                       {formatTaipeiTime(slot.startsAt)}–{formatTaipeiTime(slot.endsAt)}
                     </a>
                     <span>{slot.resourceName}</span>
                     {slot.resourceRetiredAt !== null && <span class="tag tag--quiet">已停用</span>}
-                    <span class="agenda-count">{slot.occupied}／{slot.capacity}（剩 {slot.remainingSeats}）</span>
+                    <span class="agenda-count">
+                      <span class="slot-occupied-count">{slot.occupied}／{slot.capacity}</span>
+                      （<span class="slot-remaining-count">剩 {slot.remainingSeats}</span>）
+                    </span>
                     {slot.overcommitted && <span class="tag agenda-over">超占</span>}
                   </div>
                   {
@@ -131,12 +222,15 @@ const createSlotHref = resourceId === undefined ? "/admin/resources" : `/admin/r
                       </ul>
                     )
                   }
+                  <script type="application/json" id={`slot-data-${slot.id}`} set:html={JSON.stringify(slot)} />
                 </li>
               ))}
             </ol>
           )
         }
+        <AdminSlotDrawer />
       </>
     )
   }
 </AdminLayout>
+

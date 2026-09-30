@@ -28,10 +28,17 @@ if (validSlotId && Astro.request.method === "POST") {
     successUrl: (id) => `/admin/slots/${slotId}?cancelled=${id}`,
   });
   if ("redirect" in outcome) return Astro.redirect(outcome.redirect, outcome.status);
+  if ("json" in outcome) {
+    return new Response(JSON.stringify(outcome.json), {
+      status: outcome.status,
+      headers: { "content-type": "application/json" },
+    });
+  }
   cancelError = outcome.error;
   unauthorized = outcome.status === 403;
   Astro.response.status = outcome.status;
 }
+
 
 const result = validSlotId && !unauthorized
   ? await env.APP.listSlotHoldsAndBookingsForAdmin(jwt, { slotId })

@@ -6,6 +6,8 @@ type CancelFailureStatus = 403 | 404 | 409 | 422;
 
 export type CancelBookingPostOutcome =
   | { redirect: string; status: 303 }
+  | { json: { ok: true; id: number }; status: 200 }
+  | { json: { ok: false; error: string }; status: CancelFailureStatus }
   | { error: string; status: CancelFailureStatus };
 
 interface CancelBookingPostContext {
@@ -45,13 +47,22 @@ export async function handleCancelBookingPost({
     // 交給 App 修剪與驗證長度；沒填或不是文字都當作空字串
     reason: toText(form.get("reason")),
   });
+  const wantsJson = request.headers.get("accept")?.includes("application/json") ?? false;
   if (result.ok) {
+    if (wantsJson) {
+      return { json: { ok: true, id: result.data.id }, status: 200 };
+    }
     return { redirect: successUrl(result.data.id), status: 303 };
   }
 
   const message = describeFailure(result);
-  return {
-    error: result.reason === "invalid_input" ? withFirstFieldDetail(message.message, result.fields ?? {}) : message.message,
-    status: failureStatus(result.reason, 404) as CancelFailureStatus,
-  };
+  const error =
+    result.reason === "invalid_input" ? withFirstFieldDetail(message.message, result.fields ?? {}) : message.message;
+  const status = failureStatus(result.reason, 404) as CancelFailureStatus;
+
+  if (wantsJson) {
+    return { json: { ok: false, error }, status };
+  }
+  return { error, status };
 }
+
